@@ -78,7 +78,9 @@ FORCE_INLINE uint64_t eduke32_rdtsc(void) {
 
     return result;
 }
-#elif defined EDUKE32_CPU_ARM
+#elif defined EDUKE32_CPU_ARM && !defined __3DS__
+// (The 3DS does not let programs read the ARM cycle counter: the SDL
+// timer, on the system tick, is used there.)
 #define HAVE_TIMER_RDTSC
 FORCE_INLINE uint64_t eduke32_rdtsc(void) {
 #if defined(__aarch64__)

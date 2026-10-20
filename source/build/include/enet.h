@@ -149,6 +149,19 @@
     #include <netinet/in.h>
     #include <netinet/tcp.h>
     #include <netdb.h>
+
+    #ifdef __3DS__
+    // libctru has IPv4 sockets only. Enough for the header to compile: the
+    // 3DS build has no netcode.
+    struct in6_addr { uint8_t s6_addr[16]; };
+    struct sockaddr_in6 {
+        sa_family_t sin6_family;
+        in_port_t sin6_port;
+        uint32_t sin6_flowinfo;
+        struct in6_addr sin6_addr;
+        uint32_t sin6_scope_id;
+    };
+    #endif
     #include <unistd.h>
     #include <string.h>
     #include <errno.h>

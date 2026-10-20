@@ -73,7 +73,7 @@ DOLSUFFIX := .dol
 ifeq ($(PLATFORM),DARWIN)
     DLLSUFFIX := .dylib
 endif
-ifeq ($(PLATFORM),WII)
+ifeq ($(PLATFORM),$(filter $(PLATFORM),WII 3DS))
     EXESUFFIX := .elf
 endif
 ifeq ($(PLATFORM),WINDOWS)
@@ -175,6 +175,16 @@ ifeq ($(PLATFORM),WII)
     CROSS := powerpc-eabi-
 
     CCFULLPATH = $(DEVKITPPC)/bin/$(CC)
+else ifeq ($(PLATFORM),3DS)
+    ifeq ($(strip $(DEVKITARM)),)
+        $(error "Please set DEVKITARM in your environment. export DEVKITARM := <path to>devkitARM")
+    endif
+
+    export PATH := $(DEVKITARM)/bin:$(PATH)
+
+    CROSS := arm-none-eabi-
+
+    CCFULLPATH = $(DEVKITARM)/bin/$(CC)
 else ifeq ($(PLATFORM),$(filter $(PLATFORM),DINGOO GCW))
     CROSS := mipsel-linux-
 endif
@@ -288,6 +298,8 @@ ifeq ($(PLATFORM),WINDOWS)
     endif
 else ifeq ($(PLATFORM),WII)
     IMPLICIT_ARCH := ppc
+else ifeq ($(PLATFORM),3DS)
+    IMPLICIT_ARCH := arm
 else ifeq ($(PLATFORM),$(filter $(PLATFORM),DINGOO GCW))
     IMPLICIT_ARCH := mipsel
 else
@@ -387,6 +399,18 @@ else ifeq ($(PLATFORM),WII)
     override HAVE_GTK2 := 0
     override HAVE_FLAC := 0
     SDL_TARGET := 1
+else ifeq ($(PLATFORM),3DS)
+    # Software renderer first; Polymost comes later over a GL layer.
+    override USE_OPENGL := 0
+    override NETCODE := 0
+    override HAVE_GTK2 := 0
+    override HAVE_FLAC := 0
+    override HAVE_VORBIS := 0
+    override USE_MIMALLOC := 0
+    override STARTUP_WINDOW := 0
+    SDL_TARGET := 2
+    # 3dsxtool needs the symbol table; the .3dsx and .cia are small anyway.
+    override STRIP :=
 else ifeq ($(PLATFORM),$(filter $(PLATFORM),DINGOO GCW))
     override USE_OPENGL := 0
     override NOASM := 1
@@ -540,6 +564,14 @@ else ifeq ($(PLATFORM),WII)
     # -msdata=eabiexport
     COMPILERFLAGS += -DGEKKO -D__POWERPC__ -I$(LIBOGC_INC)
     LIBDIRS += -L$(LIBOGC_LIB)
+else ifeq ($(PLATFORM),3DS)
+    COMMONFLAGS += -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft -mword-relocations -ffunction-sections
+    LINKERFLAGS += -specs=3dsx.specs -Wl,--gc-sections
+    COMPILERFLAGS += -D__3DS__ -DARM11 -I$(DEVKITPRO)/libctru/include
+    # devkitARM's int32_t is long; the code expects int, as everywhere else.
+    COMPILERFLAGS += -U__INT32_TYPE__ -D__INT32_TYPE__=int -U__UINT32_TYPE__ '-D__UINT32_TYPE__=unsigned int' \
+                     -U__INT_LEAST32_TYPE__ -D__INT_LEAST32_TYPE__=int -U__UINT_LEAST32_TYPE__ '-D__UINT_LEAST32_TYPE__=unsigned int'
+    LIBDIRS += -L$(DEVKITPRO)/libctru/lib
 else ifeq ($(PLATFORM),$(filter $(PLATFORM),DINGOO GCW))
     COMPILERFLAGS += -D__OPENDINGUX__
 else ifeq ($(SUBPLATFORM),LINUX)
@@ -883,6 +915,12 @@ else ifeq ($(PLATFORM),BSD)
 else ifeq ($(PLATFORM),WII)
     COMPILERFLAGS += -I$(PORTLIBS)/include -Iplatform/Wii/include
     LIBDIRS += -L$(PORTLIBS)/lib -Lplatform/Wii/lib
+else ifeq ($(PLATFORM),3DS)
+    # SDL2 built by tools/3ds/build-deps.sh
+    COMPILERFLAGS += -Ideps-3ds/include -Ideps-3ds/include/SDL2 -Iplatform/3DS/include
+    LIBDIRS += -Ldeps-3ds/lib
+    # SDL_main.h renames main on the 3DS; SDL2main provides the real one.
+    LIBS += -lSDL2main
 endif
 
 
@@ -922,7 +960,7 @@ ifeq ($(RENDERTYPE),SDL)
         SDLCONFIG :=
     endif
 
-    ifeq ($(PLATFORM),WII)
+    ifeq ($(PLATFORM),$(filter $(PLATFORM),WII 3DS))
         SDLCONFIG :=
     endif
 
@@ -994,11 +1032,13 @@ ifeq ($(PLATFORM),WINDOWS)
     # -lshfolder
 else ifeq ($(PLATFORM),WII)
     LIBS += -laesnd_tueidj -lfat -lwiiuse -lbte -lwiikeyboard -logc
+else ifeq ($(PLATFORM),3DS)
+    LIBS += -lctru
 else ifeq ($(SUBPLATFORM),LINUX)
     LIBS += -lrt -latomic
 endif
 
-ifeq (,$(filter $(PLATFORM),WINDOWS WII))
+ifeq (,$(filter $(PLATFORM),WINDOWS WII 3DS))
     ifneq ($(PLATFORM),BSD)
         LIBS += -ldl
     endif

@@ -117,6 +117,9 @@ char *Bgethomedir(void)
     return NULL;
 #elif defined EDUKE32_OSX
     return osx_gethomedir();
+#elif defined(__3DS__)
+    // The games' folders are in /3ds on the SD card.
+    return Xstrdup("sdmc:/3ds");
 #elif defined(GEKKO)
     // return current drive's name
     char *drv, cwd[BMAX_PATH] = {0};

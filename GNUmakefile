@@ -162,6 +162,9 @@ endif
 ifneq ($(RENDERTYPE),WIN)
     imgui_excl += imgui_impl_win32.cpp
 endif
+ifeq (0,$(USE_OPENGL))
+    imgui_excl += imgui_impl_opengl3.cpp
+endif
 
 imgui_objs := $(call getfiltered,imgui,*.cpp)
 
@@ -330,6 +333,13 @@ ifeq ($(PLATFORM),WII)
     LINKERFLAGS += -Wl,-wrap,c_default_exceptionhandler
 else
     engine_excl += wiibits.cpp
+endif
+
+ifeq ($(PLATFORM),3DS)
+    # No IPv6 sockets in libctru, and the 3DS build has no netcode.
+    engine_excl += enet.cpp
+else
+    engine_excl += n3dsbits.cpp
 endif
 
 ifneq ($(RENDERTYPE),SDL)

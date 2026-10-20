@@ -276,6 +276,8 @@ void G_ExtPreInit(int32_t argc,char const * const * argv)
                 APPNAME
 #elif defined(GEKKO)
                 "apps/" APPBASENAME
+#elif defined(__3DS__)
+                APPBASENAME
 #else
                 ".config/" APPBASENAME
 #endif

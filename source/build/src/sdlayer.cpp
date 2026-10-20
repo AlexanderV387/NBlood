@@ -39,6 +39,8 @@
 # include "osxbits.h"
 # include <mach/mach.h>
 # include <mach/mach_time.h>
+#elif defined __3DS__
+# include "n3dsbits.h"
 #elif defined GEKKO
 # include "wiibits.h"
 # include <ogc/lwp.h>
@@ -179,7 +181,7 @@ int32_t wm_msgbox(const char *name, const char *fmt, ...)
 #elif defined EDUKE32_TOUCH_DEVICES
     LOG_F(INFO, "wm_msgbox called. Message: %s: %s",name,buf);
     return 0;
-#elif defined GEKKO
+#elif defined GEKKO || defined __3DS__
     puts(buf);
     return 0;
 #else
@@ -227,7 +229,7 @@ int32_t wm_ynbox(const char *name, const char *fmt, ...)
     LOG_F(WARNING, "wm_ynbox called, this is bad! Message: %s: %s",name,buf);
     LOG_F(INFO, "Returning false..");
     return 0;
-#elif defined GEKKO
+#elif defined GEKKO || defined __3DS__
     puts(buf);
     puts("Assuming yes...");
     return 1;
@@ -323,7 +325,7 @@ void wm_setapptitle(const char *name)
 //
 
 /* XXX: libexecinfo could be used on systems without gnu libc. */
-#if !defined _WIN32 && defined __GNUC__ && !defined __OpenBSD__ && !(defined __APPLE__ && defined __BIG_ENDIAN__) && !defined GEKKO && !defined EDUKE32_TOUCH_DEVICES && !defined __OPENDINGUX__
+#if !defined _WIN32 && defined __GNUC__ && !defined __OpenBSD__ && !(defined __APPLE__ && defined __BIG_ENDIAN__) && !defined GEKKO && !defined __3DS__ && !defined EDUKE32_TOUCH_DEVICES && !defined __OPENDINGUX__
 # define PRINTSTACKONSEGV 1
 # include <execinfo.h>
 #endif
@@ -478,6 +480,20 @@ int main(int argc, char *argv[])
 #endif
 
     engineSetupAllocator();
+
+#ifdef __3DS__
+    // A .cia starts with no arguments, not even the program's name.
+    static char n3ds_argv0[] = "eduke32";
+    static char *n3ds_argv[] = { n3ds_argv0, nullptr };
+    if (argc < 1)
+    {
+        argc = 1;
+        argv = n3ds_argv;
+    }
+
+    // Before the log: it is written to the game's folder.
+    n3ds_open();
+#endif
 
 #ifndef __ANDROID__
     signal(SIGSEGV, sighandler);

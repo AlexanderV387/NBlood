@@ -101,7 +101,10 @@ int32_t g_Shareware = 0;
 // This was 32 for a while, but I think lowering it to 24 will help things like the Dingoo.
 // Ideally, we would look at our memory usage on our most cramped platform and figure out
 // how much of that is needed for the underlying OS and things like SDL instead of guessing
-#ifndef GEKKO
+#if defined __3DS__
+// About 80 MB for everything on the New 3DS; the shareware's art is 10 MB.
+int32_t MAXCACHE1DSIZE = (32*1024*1024);
+#elif !defined GEKKO
 int32_t MAXCACHE1DSIZE = (96*1024*1024);
 #else
 int32_t MAXCACHE1DSIZE = (8*1024*1024);

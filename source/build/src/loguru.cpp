@@ -1185,9 +1185,16 @@ namespace loguru
 				//  - ARM32 GCC returns an unsigned long long int
 				// So we bake the variations down to a common integer:
 				const auto pthread_self_is_pointer = std::is_pointer<decltype(native_id)>::value;
+			#ifdef __3DS__
+				// libctru's pthread_t is a pointer: the static_cast below
+				// does not compile even in the branch not taken.
+				(void)pthread_self_is_pointer;
+				const auto thread_id = (uintptr_t)native_id;
+			#else
 				const auto thread_id = pthread_self_is_pointer
 				                           ? reinterpret_cast<uintptr_t>((void*)native_id)
 				                           : static_cast<uintptr_t>(native_id);
+			#endif
 			#else
 				// This ID does not correllate to anything we can get from the OS,
 				// so this is the worst way to get the ID.
@@ -2114,6 +2121,24 @@ namespace loguru
 		if (signal_options.sigterm) {
 			CHECK_F((default_handler[SIGTERM] = signal(SIGTERM, signal_handler)) != SIG_ERR, "Failed to install handler for SIGTERM");
 		}
+	}
+} // namespace loguru
+
+#elif defined(__3DS__)
+namespace loguru
+{
+	// No sigaction on the 3DS: crashes go to the system's error screen.
+	void write_to_stderr(const char* data, size_t size)
+	{
+		fwrite(data, 1, size, stderr);
+	}
+
+	void call_default_signal_handler(int)
+	{
+	}
+
+	void install_signal_handlers(const SignalOptions&)
+	{
 	}
 } // namespace loguru
 

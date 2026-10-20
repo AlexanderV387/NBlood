@@ -2523,6 +2523,13 @@ int32_t handleevents_sdlcommon(SDL_Event *ev)
             break;
 
         case SDL_QUIT:
+#ifdef __3DS__
+            // Closed from the HOME Menu: the screens are no longer ours and
+            // the HOME Menu waits for the game to end.
+            LOG_F(INFO, "Closed from the HOME Menu");
+            SDL_Quit();
+            exit(EXIT_SUCCESS);
+#endif
             quitevent = 1;
             return -1;
     }

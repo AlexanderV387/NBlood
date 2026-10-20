@@ -993,7 +993,7 @@ error:
 
     if (voice <= FX_Ok)
     {
-        LOG_F(ERROR, "Error attempting to play %s", snd->filename);
+        LOG_F(ERROR, "Error attempting to play %s: %s", snd->filename, FX_ErrorString(FX_Error));
         bitmap_clear(&snd->playing, sndnum);
         goto error;
     }

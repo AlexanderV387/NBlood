@@ -1033,7 +1033,7 @@ ifeq ($(PLATFORM),WINDOWS)
 else ifeq ($(PLATFORM),WII)
     LIBS += -laesnd_tueidj -lfat -lwiiuse -lbte -lwiikeyboard -logc
 else ifeq ($(PLATFORM),3DS)
-    LIBS += -lctru
+    LIBS += -lndspfix -lctru
 else ifeq ($(SUBPLATFORM),LINUX)
     LIBS += -lrt -latomic
 endif

@@ -14,6 +14,15 @@ PREFIX="$PWD/deps-3ds"
 WORK="$PWD/deps-3ds/src"
 PATCHES="$PWD/tools/3ds/patches"
 
+# libctru's ndsp-channel.c with a guard (platform/3DS/ndsp), linked
+# before libctru so that it replaces the library's copy.
+mkdir -p "$PREFIX/lib" "$WORK"
+"$DEVKITARM/bin/arm-none-eabi-gcc" -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft \
+    -O2 -D__3DS__ -I"$DEVKITPRO/libctru/include" \
+    -c "$PWD/platform/3DS/ndsp/ndsp-channel.c" -o "$WORK/ndsp-channel.o"
+rm -f "$PREFIX/lib/libndspfix.a"
+"$DEVKITARM/bin/arm-none-eabi-ar" rcs "$PREFIX/lib/libndspfix.a" "$WORK/ndsp-channel.o"
+
 [ -f "$PREFIX/lib/libSDL2.a" ] && { echo "deps-3ds: already built"; exit 0; }
 
 mkdir -p "$WORK"

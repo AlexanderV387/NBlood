@@ -2216,7 +2216,7 @@ void videoShowFrame(int32_t w)
 #ifdef __3DS__
     static int n3ds_frames;
     if (++n3ds_frames <= 3 || n3ds_frames % 600 == 0)
-        LOG_F(INFO, "3DS: frame %d shown", n3ds_frames);
+        LOG_F(INFO, "3DS: frame %d shown; ndsp list resyncs: %u", n3ds_frames, (unsigned) ndspChnListResyncs);
 #endif
 
     if (SDL_MUSTLOCK(sdl_surface)) SDL_LockSurface(sdl_surface);

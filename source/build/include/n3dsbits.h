@@ -17,6 +17,9 @@ extern "C" {
 // working directory.
 void n3ds_open(void);
 
+// Counted by platform/3DS/ndsp/ndsp-channel.c.
+extern volatile uint32_t ndspChnListResyncs;
+
 #ifdef __cplusplus
 }
 #endif

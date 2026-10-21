@@ -55,6 +55,8 @@ bool softsurface_initialize(vec2_t bufferResolution,
     bufferRes = bufferResolution;
     destBufferRes = destBufferResolution;
 
+    LOG_F(INFO, "Software surface: %dx%d drawn, %dx%d shown", bufferRes.x, bufferRes.y, destBufferRes.x, destBufferRes.y);
+
     xScale16 = divscale16(destBufferRes.x, bufferRes.x);
     yScale16 = divscale16(destBufferRes.y, bufferRes.y);
     recXScale16 = divscale16(bufferRes.x, destBufferRes.x);
@@ -175,9 +177,13 @@ void softsurface_blitBufferInternal(UINTTYPE* destBuffer)
         remainder = linesToCopy & MASK16;
         linesToCopy = (linesToCopy >> 16)-1;
         const UINTTYPE* const __restrict pScanLineSrc = pDst-destBufferRes.x;
-        while (linesToCopy)
+        while (linesToCopy && pDst < pEnd)
         {
             uint32_t lines = min(linesCopied, linesToCopy);
+            // Never past the destination's last line.
+            lines = min<uint32_t>(lines, (pEnd - pDst) / destBufferRes.x);
+            if (!lines)
+                break;
             memcpy(pDst, pScanLineSrc, sizeof(UINTTYPE)*lines*destBufferRes.x);
             pDst += lines*destBufferRes.x;
             linesToCopy -= lines;

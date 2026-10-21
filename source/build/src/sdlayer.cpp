@@ -1943,6 +1943,10 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
         sdl_surface = SDL_GetWindowSurface(sdl_window);
         if (!sdl_surface)
             SDL2_VIDEO_ERR("SDL_GetWindowSurface");
+#ifdef __3DS__
+        LOG_F(INFO, "3DS: video mode %dx%d %d-bit, window surface %dx%d, %d bits, pitch %d", x, y, c,
+              sdl_surface->w, sdl_surface->h, sdl_surface->format->BitsPerPixel, sdl_surface->pitch);
+#endif
     }
 
     setvideomode_sdlcommonpost(x, y, c, fs, regrab);
@@ -2206,6 +2210,12 @@ void videoShowFrame(int32_t w)
         LOG_F(WARNING, "Frame was still locked at a depth of %d when videoShowFrame() was called!", lockcount);
         while (lockcount) videoEndDrawing();
     }
+
+#ifdef __3DS__
+    static int n3ds_frames;
+    if (++n3ds_frames <= 3 || n3ds_frames % 600 == 0)
+        LOG_F(INFO, "3DS: frame %d shown", n3ds_frames);
+#endif
 
     if (SDL_MUSTLOCK(sdl_surface)) SDL_LockSurface(sdl_surface);
     softsurface_blitBuffer((uint32_t*) sdl_surface->pixels, sdl_surface->format->BitsPerPixel);

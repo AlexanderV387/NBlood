@@ -1,0 +1,43 @@
+diff --git a/src/audio/n3ds/SDL_n3dsaudio.c b/src/audio/n3ds/SDL_n3dsaudio.c
+index ea20a7c..2c7486e 100644
+--- a/src/audio/n3ds/SDL_n3dsaudio.c
++++ b/src/audio/n3ds/SDL_n3dsaudio.c
+@@ -51,7 +51,7 @@ static SDL_INLINE void contextUnlock(_THIS)
+ 
+ static void N3DSAUD_DspHook(DSP_HookType hook)
+ {
+-    if (hook == DSPHOOK_ONCANCEL) {
++    if (hook == DSPHOOK_ONCANCEL && audio_device && audio_device->hidden) {
+         contextLock(audio_device);
+         audio_device->hidden->isCancelled = SDL_TRUE;
+         SDL_AtomicSet(&audio_device->enabled, SDL_FALSE);
+@@ -66,6 +66,11 @@ static void AudioFrameFinished(void *device)
+     unsigned i;
+     SDL_AudioDevice *this = (SDL_AudioDevice *)device;
+ 
++    /* The device may be closing: see N3DSAUDIO_CloseDevice. */
++    if (!this || !this->hidden) {
++        return;
++    }
++
+     contextLock(this);
+ 
+     for (i = 0; i < NUM_BUFFERS; i++) {
+@@ -239,9 +244,17 @@ static void N3DSAUDIO_CloseDevice(_THIS)
+ 
+     contextUnlock(this);
+ 
++    /* ndsp's thread may have read the callback just before it was cleared
++       and still be running it: wait two DSP frames (about 5 ms each)
++       before freeing what it uses. */
++    svcSleepThread(10 * 1000 * 1000);
++
+     ndspExit();
+ 
+     FreePrivateData(this);
++    if (audio_device == this) {
++        audio_device = NULL;
++    }
+ }
+ 
+ static void N3DSAUDIO_ThreadInit(_THIS)

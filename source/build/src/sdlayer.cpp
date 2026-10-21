@@ -504,7 +504,9 @@ int main(int argc, char *argv[])
 
     engineSetupLogging(argc, argv);
 
-#if SDL_VERSION_ATLEAST(2, 0, 8)
+#if SDL_VERSION_ATLEAST(2, 0, 8) && !defined __3DS__
+    // (Not on the 3DS: SDL's audio data, used from ndsp's thread, was
+    // corrupted with the engine's allocator.)
     if (EDUKE32_SDL_LINKED_PREREQ(linked, 2, 0, 8))
         SDL_SetMemoryFunctions(_xmalloc, _xcalloc, _xrealloc, _xfree);
 #endif

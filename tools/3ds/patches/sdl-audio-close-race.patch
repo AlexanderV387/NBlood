@@ -1,5 +1,5 @@
 diff --git a/src/audio/n3ds/SDL_n3dsaudio.c b/src/audio/n3ds/SDL_n3dsaudio.c
-index ea20a7c..2c7486e 100644
+index ea20a7c..1e5aba1 100644
 --- a/src/audio/n3ds/SDL_n3dsaudio.c
 +++ b/src/audio/n3ds/SDL_n3dsaudio.c
 @@ -51,7 +51,7 @@ static SDL_INLINE void contextUnlock(_THIS)
@@ -11,7 +11,15 @@ index ea20a7c..2c7486e 100644
          contextLock(audio_device);
          audio_device->hidden->isCancelled = SDL_TRUE;
          SDL_AtomicSet(&audio_device->enabled, SDL_FALSE);
-@@ -66,6 +66,11 @@ static void AudioFrameFinished(void *device)
+@@ -60,12 +60,19 @@ static void N3DSAUD_DspHook(DSP_HookType hook)
+     }
+ }
+ 
++static SDL_bool ndsp_ready = SDL_FALSE;
++
+ static void AudioFrameFinished(void *device)
+ {
+     bool shouldBroadcast = false;
      unsigned i;
      SDL_AudioDevice *this = (SDL_AudioDevice *)device;
  
@@ -23,16 +31,41 @@ index ea20a7c..2c7486e 100644
      contextLock(this);
  
      for (i = 0; i < NUM_BUFFERS; i++) {
-@@ -239,9 +244,17 @@ static void N3DSAUDIO_CloseDevice(_THIS)
+@@ -93,8 +100,13 @@ static int N3DSAUDIO_OpenDevice(_THIS, const char *devname)
+         return SDL_OutOfMemory();
+     }
+ 
+-    /* Initialise the DSP service */
+-    ndsp_init_res = ndspInit();
++    /* Initialise the DSP service, once: closing it and opening it again
++       raced with ndsp's thread (see N3DSAUDIO_CloseDevice). */
++    ndsp_init_res = ndsp_ready ? 0 : ndspInit();
++    if (R_SUCCEEDED(ndsp_init_res) && !ndsp_ready) {
++        ndsp_ready = SDL_TRUE;
++        atexit(ndspExit);
++    }
+     if (R_FAILED(ndsp_init_res)) {
+         if ((R_SUMMARY(ndsp_init_res) == RS_NOTFOUND) && (R_MODULE(ndsp_init_res) == RM_DSP)) {
+             SDL_SetError("DSP init failed: dspfirm.cdc missing!");
+@@ -232,16 +244,23 @@ static void N3DSAUDIO_CloseDevice(_THIS)
+     ndspSetCallback(NULL, NULL);
+ 
+     if (!this->hidden->isCancelled) {
+-        ndspChnReset(0);
+-        memset(this->hidden->waveBuf, 0, sizeof(ndspWaveBuf) * NUM_BUFFERS);
+         CondVar_Broadcast(&this->hidden->cv);
+     }
  
      contextUnlock(this);
  
-+    /* ndsp's thread may have read the callback just before it was cleared
-+       and still be running it: wait two DSP frames (about 5 ms each)
-+       before freeing what it uses. */
-+    svcSleepThread(10 * 1000 * 1000);
-+
-     ndspExit();
+-    ndspExit();
++    /* Take the buffers off the channel with ndsp's own lock (clearing
++       them by hand left ndsp's thread walking a list of zeroed buffers),
++       then wait a few DSP frames (about 5 ms each): ndsp's thread may still
++       be in the callback, or reading the channel, with what is freed below.
++       ndsp itself stays initialised; it ends with the program. */
++    ndspChnWaveBufClear(0);
++    svcSleepThread(20 * 1000 * 1000);
  
      FreePrivateData(this);
 +    if (audio_device == this) {

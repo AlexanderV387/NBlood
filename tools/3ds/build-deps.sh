@@ -1,9 +1,9 @@
 #!/bin/sh
 # Builds SDL2 for the 3DS into deps-3ds/ (devkitPro has no SDL2 packages
 # for the 3DS; SDL supports it officially since 2.24). The patches in
-# tools/3ds/patches are applied to SDL first; the first two are Crispy
-# Doom's, the last one fixes a crash when the game closes and reopens
-# the audio device.
+# tools/3ds/patches are applied to SDL first: two are Crispy Doom's; the
+# audio ones give the audio thread a bigger stack (the game mixes and
+# emulates its music chip there) and make closing the device safe.
 #
 # Run from the repository root inside the devkitpro/devkitarm image (the
 # source can be cloned beforehand outside it: deps-3ds/src/SDL).

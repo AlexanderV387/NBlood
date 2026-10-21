@@ -1,0 +1,23 @@
+diff --git a/src/audio/SDL_audio.c b/src/audio/SDL_audio.c
+index 96586fe..5e863a2 100644
+--- a/src/audio/SDL_audio.c
++++ b/src/audio/SDL_audio.c
+@@ -1553,7 +1553,17 @@ static SDL_AudioDeviceID open_audio_device(const char *devname, int iscapture,
+ 
+         (void)SDL_snprintf(threadname, sizeof(threadname), "SDLAudio%c%" SDL_PRIu32, (iscapture) ? 'C' : 'P', device->id);
+ 
+-        device->thread = SDL_CreateThreadInternal(iscapture ? SDL_CaptureAudio : SDL_RunAudio, threadname, 0, &startup_data);
++        {
++#ifdef __3DS__
++            /* The game mixes its sounds and emulates its music chip in this
++               thread: the default 80 KB overflowed into the audio device's
++               data, allocated just below the stack. */
++            const size_t stacksize = 512 * 1024;
++#else
++            const size_t stacksize = 0;
++#endif
++            device->thread = SDL_CreateThreadInternal(iscapture ? SDL_CaptureAudio : SDL_RunAudio, threadname, stacksize, &startup_data);
++        }
+         if (device->thread == NULL) {
+             SDL_DestroySemaphore(startup_data.startup_semaphore);
+             close_audio_device(device);

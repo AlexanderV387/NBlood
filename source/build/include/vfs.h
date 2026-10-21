@@ -87,13 +87,25 @@ using buildvfs_FILE = FILE *;
 #define buildvfs_fread(p, s, n, fp) fread((p), (s), (n), (fp))
 #define buildvfs_fwrite(p, s, n, fp) fwrite((p), (s), (n), (fp))
 #define buildvfs_fopen_read(fn) fopen((fn), "rb")
+#ifdef __3DS__
+// Written over in place and cut at the end (n3dsbits.h): on the SD card,
+// writing a file just created or emptied can take seconds.
+# include "n3dsbits.h"
+# define buildvfs_fopen_write(fn) n3ds_fopen_rewrite(fn)
+# define buildvfs_fopen_write_text(fn) n3ds_fopen_rewrite(fn)
+#else
 #define buildvfs_fopen_write(fn) fopen((fn), "wb")
 #define buildvfs_fopen_write_text(fn) fopen((fn), "w")
+#endif
 #define buildvfs_fopen_append(fn) fopen((fn), "ab+")
 #define buildvfs_fgetc(fp) fgetc(fp)
 #define buildvfs_fputc(c, fp) fputc((c), (fp))
 #define buildvfs_fgets(str, size, fp) fgets((str), (size), (fp))
+#ifdef __3DS__
+# define buildvfs_fclose(fp) n3ds_fclose(fp)
+#else
 #define buildvfs_fclose(fp) fclose(fp)
+#endif
 #define buildvfs_feof(fp) feof(fp)
 #define buildvfs_ftell(fp) ftell(fp)
 #define buildvfs_fseek_abs(fp, o) fseek((fp), (o), SEEK_SET)

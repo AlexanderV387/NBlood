@@ -1190,12 +1190,21 @@ const char *joyGetName(int32_t what, int32_t num)
             {
                 static char const * axisStrings[] =
                 {
+#ifdef __3DS__
+                    "Circle Pad X",
+                    "Circle Pad Y",
+                    "C-Stick X",
+                    "C-Stick Y",
+                    "ZL",
+                    "ZR",
+#else
                     "Left Stick X-Axis",
                     "Left Stick Y-Axis",
                     "Right Stick X-Axis",
                     "Right Stick Y-Axis",
                     "Left Trigger",
                     "Right Trigger",
+#endif
                     NULL
                 };
 
@@ -1219,6 +1228,15 @@ const char *joyGetName(int32_t what, int32_t num)
                     "B",
                     "X",
                     "Y",
+#ifdef __3DS__
+                    "SELECT",
+                    "HOME",
+                    "START",
+                    "Left Stick",
+                    "Right Stick",
+                    "L",
+                    "R",
+#else
                     "Back",
                     "Guide",
                     "Start",
@@ -1226,6 +1244,7 @@ const char *joyGetName(int32_t what, int32_t num)
                     "Right Stick",
                     "Left Shoulder",
                     "Right Shoulder",
+#endif
                     "D-Pad Up",
                     "D-Pad Down",
                     "D-Pad Left",
@@ -1598,7 +1617,8 @@ void engineBeginImGuiInput(void)
 {
     keyFlushChars();
     keyFlushScans();
-#if SDL_MAJOR_VERSION >= 2
+#if SDL_MAJOR_VERSION >= 2 && !defined __3DS__
+    // (On the 3DS this opens the system's keyboard, which stops the game.)
     SDL_StartTextInput();
 //    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
 #endif
@@ -2214,9 +2234,22 @@ void videoShowFrame(int32_t w)
     }
 
 #ifdef __3DS__
-    static int n3ds_frames;
-    if (++n3ds_frames <= 3 || n3ds_frames % 600 == 0)
-        LOG_F(INFO, "3DS: frame %d shown; ndsp list resyncs: %u", n3ds_frames, (unsigned) ndspChnListResyncs);
+    // Straight to the 3DS's framebuffers (n3dsbits.cpp): SDL's copies every
+    // pixel with its own memcpy, and does not wait for the vertical blank.
+    {
+        static bool first = true;
+        vec2_t const res = softsurface_getBufferResolution();
+
+        if (first)
+        {
+            LOG_F(INFO, "3DS: first frame (%dx%d)", res.x, res.y);
+            first = false;
+        }
+
+        n3ds_present(softsurface_getBuffer(), res.x, res.y, (const uint8_t *) curpalettefaded);
+        MicroProfileFlip();
+        return;
+    }
 #endif
 
     if (SDL_MUSTLOCK(sdl_surface)) SDL_LockSurface(sdl_surface);

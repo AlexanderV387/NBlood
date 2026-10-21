@@ -32,6 +32,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "savegame.h"
 #include "sbar.h"
 
+#ifdef __3DS__
+# include "n3dsbits.h"
+# include "screens.h"
+#endif
+
 #ifdef EDUKE32_TOUCH_DEVICES
 #include "in_android.h"
 #endif
@@ -1594,6 +1599,19 @@ int32_t registerosdcommands(void)
         { "benchmarkmode", "benchmark mode:\n 0: off\n 1: performance test\n 2: generate reference screenshots for correctness testing", (void *) &g_BenchmarkMode, CVAR_INT|CVAR_NOSAVE, 0, 2 },
 
         { "crosshair", "display crosshair" CVAR_BOOL_OPTSTR, (void *)&ud.crosshair, CVAR_BOOL, 0, 1 },
+
+#ifdef __3DS__
+        { "n3ds_bottom_map", "3DS: map on the bottom screen" CVAR_BOOL_OPTSTR, (void *)&n3ds_bottom_map, CVAR_BOOL, 0, 1 },
+        { "n3ds_status_below", "3DS: status bar below the map" CVAR_BOOL_OPTSTR, (void *)&n3ds_status_below, CVAR_BOOL, 0, 1 },
+        { "n3ds_classic_hud", "3DS: status bar on the top screen, as on PC" CVAR_BOOL_OPTSTR, (void *)&n3ds_classic_hud, CVAR_BOOL, 0, 1 },
+        { "n3ds_weapon_bar", "3DS: weapon and item buttons on the bottom screen" CVAR_BOOL_OPTSTR, (void *)&n3ds_weapon_bar, CVAR_BOOL, 0, 1 },
+        { "n3ds_show_fps", "3DS: frame counter on the bottom screen" CVAR_BOOL_OPTSTR, (void *)&n3ds_show_fps, CVAR_BOOL, 0, 1 },
+        { "n3ds_map_zoom", "3DS: bottom screen map zoom (percent)", (void *)&n3ds_map_zoom, CVAR_INT, 25, 800 },
+        { "n3ds_touch_turn", "3DS: sliding on the bottom screen turns" CVAR_BOOL_OPTSTR, (void *)&n3ds_touch_turn, CVAR_BOOL, 0, 1 },
+        { "n3ds_touch_speed", "3DS: touch turning speed", (void *)&n3ds_touch_speed, CVAR_INT, 1, 10 },
+        { "n3ds_run_mode", "3DS: run: 0 hold the button, 1 press once, 2 stick pushed", (void *)&n3ds_run_mode, CVAR_INT, 0, 2 },
+        { "n3ds_config_version", "3DS: settings version", (void *)&g_n3dsConfigVersion, CVAR_INT, 0, 100 },
+#endif
 
         { "cl_autoaim", "weapon autoaim:\n 0: none\n 1: hitscan only\n 2: projectiles only\n 3: everything", (void *)&ud.config.AutoAim, CVAR_INT|CVAR_MULTI, 0, 3 },
         { "cl_autorun", "player autorun" CVAR_BOOL_OPTSTR, (void *)&ud.auto_run, CVAR_BOOL, 0, 1 },

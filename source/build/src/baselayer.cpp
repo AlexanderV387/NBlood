@@ -891,6 +891,13 @@ int engineFPSLimit(bool const throttle)
     if (r_maxfps == -2)
         return true;
 
+#ifdef __3DS__
+    // The vertical blank paces the frames (n3dsbits.cpp): a second wait
+    // here would drift against it and drop frames.
+    (void) throttle;
+    return true;
+#endif
+
     g_frameDelay = calcFrameDelay(!throttle || ((unsigned)(r_maxfps-1) < (unsigned)refreshfreq) ? r_maxfps : -1);
 
     if (g_frameDelay != lastDelay)

@@ -38,6 +38,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "sbar.h"
 #include "joystick.h"
 
+#ifdef __3DS__
+# include "n3dsbits.h"
+#endif
+
 #ifndef __ANDROID__
 droidinput_t droidinput;
 #endif
@@ -54,6 +58,11 @@ static FORCE_INLINE void Menu_StartTextInput()
 {
     KB_FlushKeyboardQueue();
     KB_ClearKeysDown();
+#ifdef __3DS__
+    // The keyboard on the bottom screen (SDL's opens the system's, which
+    // stops the game).
+    n3ds_show_keyboard(1);
+#endif
 #if defined EDUKE32_TOUCH_DEVICES && defined SDL_MAJOR_VERSION && SDL_MAJOR_VERSION >= 2
 # if defined __ANDROID__
     AndroidShowKeyboard(1);
@@ -65,6 +74,9 @@ static FORCE_INLINE void Menu_StartTextInput()
 
 static FORCE_INLINE void Menu_StopTextInput()
 {
+#ifdef __3DS__
+    n3ds_show_keyboard(0);
+#endif
 #if defined EDUKE32_TOUCH_DEVICES && defined SDL_MAJOR_VERSION && SDL_MAJOR_VERSION >= 2
 # if defined __ANDROID__
     AndroidShowKeyboard(0);
@@ -767,7 +779,48 @@ static MenuEntry_t ME_CheatCodes[] = {
     MAKE_MENUCHEAT( CheatDescriptions[CHEAT_DEBUG] ),
 };
 
+#ifdef __3DS__
+// The 3DS's options (n3dsbits.h).
+static char const *MEOSN_N3DS_STATUSBAR[] = { "Above the map", "Below the map" };
+static MenuOptionSet_t MEOS_N3DS_STATUSBAR = MAKE_MENUOPTIONSET( MEOSN_N3DS_STATUSBAR, NULL, 0x2 );
+static char const *MEOSN_N3DS_RUN[] = { "Hold button", "Press once", "Stick pushed" };
+static MenuOptionSet_t MEOS_N3DS_RUN = MAKE_MENUOPTIONSET( MEOSN_N3DS_RUN, NULL, 0x2 );
+
+static MenuOption_t MEO_N3DS_MAP = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_bottom_map );
+static MenuEntry_t ME_N3DS_MAP = MAKE_MENUENTRY( "Bottom map:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_MAP, Option );
+static MenuOption_t MEO_N3DS_STATUSBAR = MAKE_MENUOPTION( &MF_Redfont, &MEOS_N3DS_STATUSBAR, &n3ds_status_below );
+static MenuEntry_t ME_N3DS_STATUSBAR = MAKE_MENUENTRY( "Status bar:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_STATUSBAR, Option );
+static MenuOption_t MEO_N3DS_CLASSICHUD = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_classic_hud );
+static MenuEntry_t ME_N3DS_CLASSICHUD = MAKE_MENUENTRY( "Classic HUD:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_CLASSICHUD, Option );
+static MenuOption_t MEO_N3DS_BUTTONS = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_weapon_bar );
+static MenuEntry_t ME_N3DS_BUTTONS = MAKE_MENUENTRY( "Touch buttons:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_BUTTONS, Option );
+static MenuOption_t MEO_N3DS_TOUCHTURN = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_touch_turn );
+static MenuEntry_t ME_N3DS_TOUCHTURN = MAKE_MENUENTRY( "Touch turning:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_TOUCHTURN, Option );
+static MenuRangeInt32_t MEO_N3DS_TOUCHSPEED = MAKE_MENURANGE( &n3ds_touch_speed, &MF_Redfont, 1, 10, 0, 10, DisplayTypeInteger );
+static MenuEntry_t ME_N3DS_TOUCHSPEED = MAKE_MENUENTRY( "Touch speed:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_TOUCHSPEED, RangeInt32 );
+static MenuOption_t MEO_N3DS_RUN = MAKE_MENUOPTION( &MF_Redfont, &MEOS_N3DS_RUN, &n3ds_run_mode );
+static MenuEntry_t ME_N3DS_RUN = MAKE_MENUENTRY( "Run:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_RUN, Option );
+static MenuOption_t MEO_N3DS_FPS = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_show_fps );
+static MenuEntry_t ME_N3DS_FPS = MAKE_MENUENTRY( "FPS counter:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_FPS, Option );
+
+static MenuEntry_t *MEL_N3DS[] = {
+    &ME_N3DS_MAP,
+    &ME_N3DS_STATUSBAR,
+    &ME_N3DS_CLASSICHUD,
+    &ME_N3DS_BUTTONS,
+    &ME_N3DS_TOUCHTURN,
+    &ME_N3DS_TOUCHSPEED,
+    &ME_N3DS_RUN,
+    &ME_N3DS_FPS,
+};
+
+MAKE_MENU_TOP_ENTRYLINK( "Nintendo 3DS", MEF_OptionsMenu, OPTIONS_N3DS, MENU_N3DS );
+#endif
+
 static MenuEntry_t *MEL_OPTIONS[] = {
+#ifdef __3DS__
+    &ME_OPTIONS_N3DS,
+#endif
 #ifndef EDUKE32_RETAIL_MENU
     &ME_OPTIONS_GAMESETUP,
 #endif
@@ -1547,6 +1600,9 @@ static MenuMenu_t M_POLYMER = MAKE_MENUMENU( "Polymer Setup", &MMF_BigOptionsScr
 static MenuMenu_t M_COLCORR = MAKE_MENUMENU( "Color Correction", &MMF_ColorCorrect, MEL_COLCORR );
 static MenuMenu_t M_SCREENSETUP = MAKE_MENUMENU( "HUD Setup", &MMF_BigOptions, MEL_SCREENSETUP );
 static MenuMenu_t M_DISPLAYSETUP = MAKE_MENUMENU( "Display Setup", &MMF_BigOptions, MEL_DISPLAYSETUP );
+#ifdef __3DS__
+static MenuMenu_t M_N3DS = MAKE_MENUMENU( "Nintendo 3DS", &MMF_BigOptions, MEL_N3DS );
+#endif
 static MenuMenu_t M_LOAD = MAKE_MENUMENU_CUSTOMSIZE( s_LoadGame, &MMF_LoadSave, MEL_LOAD );
 static MenuMenu_t M_SAVE = MAKE_MENUMENU_CUSTOMSIZE( s_SaveGame, &MMF_LoadSave, MEL_SAVE );
 static MenuMenu_t M_SOUND = MAKE_MENUMENU( "Sound Setup", &MMF_BigOptions, MEL_SOUND );
@@ -1649,6 +1705,9 @@ static Menu_t Menus[] = {
     { &M_COLCORR, MENU_COLCORR_INGAME, MENU_CLOSE, MA_Return, Menu },
     { &M_SCREENSETUP, MENU_SCREENSETUP, MENU_DISPLAYSETUP, MA_Return, Menu },
     { &M_DISPLAYSETUP, MENU_DISPLAYSETUP, MENU_OPTIONS, MA_Return, Menu },
+#ifdef __3DS__
+    { &M_N3DS, MENU_N3DS, MENU_OPTIONS, MA_Return, Menu },
+#endif
 #if defined POLYMER
     { &M_POLYMER, MENU_POLYMER, MENU_RENDERER, MA_Return, Menu },
 #endif
@@ -5321,11 +5380,30 @@ static void Menu_ChangingTo(Menu_t * m)
     }
 }
 
+#ifdef __3DS__
+// The settings are saved when the player leaves the options for another
+// menu or the game (a crash or an empty battery would lose them).
+static int Menu_IsSettings(MenuID_t id)
+{
+    return (id >= MENU_GAMESETUP && id < MENU_LOAD) || (id >= MENU_SOUND && id < MENU_SAVESETUP) || id == MENU_PLAYER;
+}
+
+static void Menu_SaveLeavingSettings(MenuID_t from, MenuID_t to)
+{
+    if (Menu_IsSettings(from) && (to == MENU_CLOSE || (to >= 0 && !Menu_IsSettings(to))))
+        CONFIG_WriteSetup(0);
+}
+#endif
+
 int Menu_Change(MenuID_t cm)
 {
     Menu_t * beginMenu = m_currentMenu;
 
     cm = VM_OnEventWithReturn(EVENT_CHANGEMENU, g_player[screenpeek].ps->i, screenpeek, cm);
+
+#ifdef __3DS__
+    Menu_SaveLeavingSettings(g_currentMenu, cm == MENU_PREVIOUS ? g_previousMenu : cm);
+#endif
 
     if (cm == MENU_PREVIOUS)
     {

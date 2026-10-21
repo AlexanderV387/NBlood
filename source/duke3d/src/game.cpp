@@ -6919,6 +6919,10 @@ int app_main(int argc, char const* const* argv)
 
     system_getcvars();
 
+#ifdef __3DS__
+    G_N3DS_Init();
+#endif
+
     if (quitevent) app_exit(4);
 
     if (g_networkMode != NET_DEDICATED_SERVER && validmodecnt > 0)

@@ -21,6 +21,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 //-------------------------------------------------------------------------
 
 extern void G_DisplayExtraScreens(void);
+#ifdef __3DS__
+// The 3DS's bottom screen (screens.cpp).
+extern uint32_t g_n3dsInputBits;   // input bits from taps, used once
+extern int32_t g_n3dsConfigVersion; // for changes to older settings
+int G_N3DS_StatusBarOnBottom(void);
+void G_N3DS_Init(void);
+#endif
 extern void G_DisplayLogo(void);
 extern void G_DoOrderScreen(void);
 

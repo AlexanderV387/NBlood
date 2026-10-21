@@ -76,6 +76,7 @@ enum MenuIndex_t {
     MENU_COLCORR_INGAME = 232,
     MENU_SCREENSETUP    = 233,
     MENU_DISPLAYSETUP   = 234,
+    MENU_N3DS           = 235,
     MENU_POLYMER        = 240,
     MENU_LOAD           = 300,
     MENU_SAVE           = 350,

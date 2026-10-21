@@ -6651,19 +6651,6 @@ void scriptInitTables()
         inthash_add(&h_actorvar, actorvar.x, actorvar.y, 0);
 }
 
-static int C_GetLabelIndex(int32_t val, int type)
-{
-    for (int i=0;i<g_labelCnt;i++)
-        if (labelcode[i] == val && (labeltype[i] & type) != 0)
-            return i;
-
-    for (int i=0;i<g_labelCnt;i++)
-        if (labelcode[i] == val)
-            return i;
-
-    return -1;
-}
-
 void C_Compile(const char *fileName)
 {
     Bmemset(apScriptEvents, 0, sizeof(apScriptEvents));
@@ -6890,9 +6877,28 @@ err:
     }
 #endif
 
+    // Each tile's label, the first with that number (preferring LABEL_ANY types): one
+    // pass over the labels instead of one for each tile (seconds on the 3DS).
+    auto tileLabel = (int32_t *)Xmalloc(2 * MAXTILES * sizeof(int32_t));
+    auto tileLabelAny = tileLabel + MAXTILES;
+
+    for (int i=0; i<2*MAXTILES; i++)
+        tileLabel[i] = -1;
+
+    for (int i=g_labelCnt-1; i>=0; i--)
+    {
+        if ((unsigned)labelcode[i] >= MAXTILES)
+            continue;
+
+        tileLabelAny[labelcode[i]] = i;
+
+        if (labeltype[i] & LABEL_ANY)
+            tileLabel[labelcode[i]] = i;
+    }
+
     for (int i=0; i<MAXTILES; i++)
     {
-        int const index = C_GetLabelIndex(i, LABEL_ANY);
+        int const index = tileLabel[i] != -1 ? tileLabel[i] : tileLabelAny[i];
 
         tempbuf[0] = 0;
         g_tileLabels[i] = nullptr;
@@ -6910,6 +6916,8 @@ err:
             g_actorTokens[i] = MicroProfileGetToken("CON VM Actors", tempbuf, MP_AUTO, MicroProfileTokenTypeCpu);
 #endif
     }
+
+    Xfree(tileLabel);
 }
 
 void C_ReportError(int error)

@@ -26,6 +26,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "input.h"
 #include "savegame.h"
 
+#ifdef __3DS__
+# include "n3dsbits.h"
+# include "screens.h"
+#endif
+
 #ifdef __ANDROID__
 #include "android.h"
 #endif
@@ -3193,6 +3198,38 @@ void P_UpdateAngles(int const playerNum, input_t &input)
 }
 
 
+#ifdef __3DS__
+// The 3DS's run modes (n3dsbits.h).
+static int N3DS_Running(int const button, int32_t const dx, int32_t const dz)
+{
+    static bool latched, wasPressed, wasMoving;
+
+    bool const analog = dx || dz;
+    bool const moving = analog || BUTTON(gamefunc_Move_Forward) || BUTTON(gamefunc_Move_Backward)
+                        || BUTTON(gamefunc_Strafe_Left) || BUTTON(gamefunc_Strafe_Right);
+
+    switch (n3ds_run_mode)
+    {
+        case N3DS_RUN_ONCE:
+            // A press runs until the player stops moving.
+            if (button && !wasPressed)
+                latched = true;
+            if (wasMoving && !moving)
+                latched = false;
+            wasPressed = button;
+            wasMoving = moving;
+            return latched || button;
+
+        case N3DS_RUN_STICK:
+            // The Circle Pad's tilt gives the speed, up to running.
+            return button || analog;
+
+        default:
+            return button;
+    }
+}
+#endif
+
 void P_GetInput(int const playerNum)
 {
     auto      &thisPlayer = g_player[playerNum];
@@ -3230,6 +3267,21 @@ void P_GetInput(int const playerNum)
 
     CONTROL_GetInput(&info);
 
+#ifdef __3DS__
+    // Touch turning: sliding on the bottom screen turns, and with mouse
+    // aiming on also looks up and down.
+    if (n3ds_touch_turn && !n3ds_keyboard_open())
+    {
+        int dx, dy;
+
+        n3ds_touch_drag(&dx, &dy);
+        info.mousex += dx * n3ds_touch_speed * 40;
+
+        if (g_myAimMode)
+            info.mousey += dy * n3ds_touch_speed * 16;
+    }
+#endif
+
     if (ud.config.MouseBias)
     {
         if (klabs(info.mousex) > klabs(info.mousey))
@@ -3266,7 +3318,11 @@ void P_GetInput(int const playerNum)
     }
 
     // JBF: Run key behaviour is selectable
+#ifdef __3DS__
+    int const       playerRunning = ud.auto_run ^ N3DS_Running(BUTTON(gamefunc_Run), info.dx, info.dz);
+#else
     int const       playerRunning = (ud.runkey_mode) ? (BUTTON(gamefunc_Run) | ud.auto_run) : (ud.auto_run ^ BUTTON(gamefunc_Run));
+#endif
     int const       turnAmount    = playerRunning ? (NORMALTURN << 1) : NORMALTURN;
     int const       keyMove       = playerRunning ? (NORMALKEYMOVE << 1) : NORMALKEYMOVE;
     constexpr float analogExtent  = 32767.f;  // KEEPINSYNC sdlayer.cpp
@@ -3425,6 +3481,12 @@ void P_GetInput(int const playerNum)
     localInput.bits |= (BUTTON(gamefunc_Steroids) << SK_STEROIDS) | (BUTTON(gamefunc_NightVision) << SK_NIGHTVISION);
     localInput.bits |= (BUTTON(gamefunc_MedKit) << SK_MEDKIT) | (BUTTON(gamefunc_Holo_Duke) << SK_HOLODUKE);
     localInput.bits |= (BUTTON(gamefunc_Jetpack) << SK_JETPACK);
+
+#ifdef __3DS__
+    // Taps on the bottom screen's items.
+    localInput.bits |= g_n3dsInputBits;
+    g_n3dsInputBits = 0;
+#endif
 
     localInput.bits |= BUTTON(gamefunc_Holster_Weapon) << SK_HOLSTER;
     localInput.bits |= BUTTON(gamefunc_Quick_Kick) << SK_QUICK_KICK;

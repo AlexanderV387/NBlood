@@ -1150,7 +1150,11 @@ void G_DisplayRest(int32_t smoothratio)
 
     if (pp->invdisptime > 0) G_DrawInventory(pp);
 
-    if (VM_OnEvent(EVENT_DISPLAYSBAR, g_player[screenpeek].ps->i, screenpeek) == 0)
+    if (VM_OnEvent(EVENT_DISPLAYSBAR, g_player[screenpeek].ps->i, screenpeek) == 0
+#ifdef __3DS__
+        && !G_N3DS_StatusBarOnBottom()
+#endif
+        )
         G_DrawStatusBar(screenpeek);
 
 #ifdef SPLITSCREEN_MOD_HACKS
@@ -2646,3 +2650,211 @@ void G_BonusScreen(int32_t bonusonly)
         }
     } while (1);
 }
+
+#ifdef __3DS__
+// ==========================================================================
+// The 3DS's bottom screen (n3dsbits.h): the status bar, the map and touch
+// buttons for the weapons and the items. Drawn with the game's own
+// functions into an 8-bit buffer through a tile target, 1:1 (the status
+// bar in its 320x200 space), then copied into the bottom screen.
+
+#include "n3dsbits.h"
+
+#define N3DS_TILE_TARGET (MAXTILES-6)
+#define N3DS_ITEM_ROW_HEIGHT 24
+
+uint32_t g_n3dsInputBits;
+int32_t g_n3dsConfigVersion;
+
+static uint8_t n3ds_target[N3DS_BOTTOM_WIDTH * 200];
+
+// Draws with the engine into n3ds_target, N3DS_BOTTOM_WIDTH wide and
+// height rows (row by row: a tile's columns are the target's rows).
+template <typename Draw> static void N3DS_DrawToTarget(int height, Draw draw)
+{
+    Bmemset(n3ds_target, 0, N3DS_BOTTOM_WIDTH * height);
+    waloff[N3DS_TILE_TARGET] = (intptr_t) n3ds_target;
+    renderSetTarget(N3DS_TILE_TARGET, height, N3DS_BOTTOM_WIDTH);
+    draw();
+    renderRestoreTarget();
+    waloff[N3DS_TILE_TARGET] = 0;
+    tilesiz[N3DS_TILE_TARGET].x = tilesiz[N3DS_TILE_TARGET].y = 0;
+}
+
+static void N3DS_CopyRows(uint8_t *screen, int dest_y, int src_y, int rows)
+{
+    for (int i = 0; i < rows; ++i)
+        if (dest_y + i >= 0 && dest_y + i < N3DS_BOTTOM_HEIGHT)
+            Bmemcpy(screen + (dest_y + i) * N3DS_BOTTOM_WIDTH, n3ds_target + (src_y + i) * N3DS_BOTTOM_WIDTH, N3DS_BOTTOM_WIDTH);
+}
+
+// The status bar goes to the bottom screen in the full screen views (the
+// top one shows none), unless the classic HUD keeps it on the top screen.
+int G_N3DS_StatusBarOnBottom(void)
+{
+    return !n3ds_classic_hud && ud.screen_size <= 4;
+}
+
+static int N3DS_InGame(void)
+{
+    auto const p = g_player[myconnectindex].ps;
+    return (p->gm & MODE_GAME) && !(p->gm & (MODE_MENU | MODE_TYPE)) && !ud.pause_on;
+}
+
+static void N3DS_DrawStatusBar(uint8_t *screen, int y, int rows)
+{
+    int32_t const size = ud.screen_size, scale = ud.statusbarscale;
+
+    N3DS_DrawToTarget(200, [] {
+        // The full status bar, redrawn whole (it only draws what changed).
+        ud.screen_size = 8;
+        ud.statusbarscale = 100;
+        pus = NUMPAGES;
+        G_DrawStatusBar(screenpeek);
+    });
+
+    ud.screen_size = size;
+    ud.statusbarscale = scale;
+    pus = NUMPAGES;  // and on the top screen, if it goes back there
+    N3DS_CopyRows(screen, y, 200 - rows, rows);
+}
+
+static void N3DS_DrawMap(uint8_t *screen, int y, int rows)
+{
+    auto const p = g_player[screenpeek].ps;
+    int const zoom = 512 * n3ds_update_map_buttons(y, rows) / 100;
+    int const ang = fix16_to_int(p->q16ang);
+
+    if (n3ds_bottom_map)
+    {
+        N3DS_DrawToTarget(rows, [&] {
+            renderDrawMapView(p->pos.x, p->pos.y, zoom, ang);
+            G_DrawOverheadMap(p->pos.x, p->pos.y, zoom, ang);
+        });
+
+        N3DS_CopyRows(screen, y, 0, rows);
+    }
+
+    n3ds_draw_map_buttons(screen, y, rows);
+}
+
+// The items used with a tap: their icon, their inventory slot and their
+// input bit.
+static struct { int tile, item, bit; } const n3ds_items[] = {
+    { FIRSTAID_ICON, GET_FIRSTAID, SK_MEDKIT },
+    { STEROIDS_ICON, GET_STEROIDS, SK_STEROIDS },
+    { HOLODUKE_ICON, GET_HOLODUKE, SK_HOLODUKE },
+    { JETPACK_ICON, GET_JETPACK, SK_JETPACK },
+    { HEAT_ICON, GET_HEATS, SK_NIGHTVISION },
+};
+
+static void N3DS_DrawItems(uint8_t *screen, int y)
+{
+    auto const p = g_player[screenpeek].ps;
+    int const slots = ARRAY_SIZE(n3ds_items), pitch = N3DS_BOTTOM_WIDTH / slots;
+
+    for (int i = 0; i < slots; ++i)
+    {
+        n3ds_fill(screen, i * pitch + 2, y + 2, pitch - 4, N3DS_ITEM_ROW_HEIGHT - 4, n3ds_ui_gray);
+        n3ds_fill(screen, i * pitch + 4, y + 4, pitch - 8, N3DS_ITEM_ROW_HEIGHT - 8, n3ds_ui_black);
+    }
+
+    // The icons, dark when the item is used up.
+    N3DS_DrawToTarget(N3DS_ITEM_ROW_HEIGHT, [&] {
+        for (int i = 0; i < slots; ++i)
+        {
+            int const tile = n3ds_items[i].tile;
+            int const x = i * pitch + (pitch - tilesiz[tile].x) / 2;
+            int const ty = (N3DS_ITEM_ROW_HEIGHT - tilesiz[tile].y) / 2;
+            int const shade = p->inv_amount[n3ds_items[i].item] > 0 ? 0 : 24;
+
+            rotatesprite(x << 16, ty << 16, 65536, 0, tile, shade, 0, RS_NOCLIP | RS_TOPLEFT, 0, 0, xdim - 1, ydim - 1);
+        }
+    });
+
+    for (int i = 0; i < N3DS_ITEM_ROW_HEIGHT; ++i)
+        for (int x = 0; x < N3DS_BOTTOM_WIDTH; ++x)
+            if (n3ds_target[i * N3DS_BOTTOM_WIDTH + x])
+                screen[(y + i) * N3DS_BOTTOM_WIDTH + x] = n3ds_target[i * N3DS_BOTTOM_WIDTH + x];
+
+    // A tap uses the item.
+    static bool was_touching;
+    int tx, ty;
+    bool const touching = n3ds_get_touch(&tx, &ty);
+
+    n3ds_reserve_touch(0, y, N3DS_BOTTOM_WIDTH, N3DS_ITEM_ROW_HEIGHT);
+
+    if (touching && !was_touching && ty >= y && ty < y + N3DS_ITEM_ROW_HEIGHT)
+        g_n3dsInputBits |= 1u << n3ds_items[min(tx / pitch, slots - 1)].bit;
+
+    was_touching = touching;
+}
+
+// The weapon in hand's button, and the buttons of the weapons held.
+static void N3DS_DrawWeapons(uint8_t *screen, int y)
+{
+    auto const p = g_player[screenpeek].ps;
+    unsigned owned = p->gotweapon & 0x3FF;
+    int in_hand = p->curr_weapon;
+
+    if (p->gotweapon & (1 << FLAMETHROWER_WEAPON))
+        owned |= 1 << FREEZE_WEAPON;
+
+    switch (in_hand)
+    {
+        case HANDREMOTE_WEAPON: in_hand = HANDBOMB_WEAPON; break;
+        case GROW_WEAPON: in_hand = SHRINKER_WEAPON; break;
+        case FLAMETHROWER_WEAPON: in_hand = FREEZE_WEAPON; break;
+    }
+
+    n3ds_draw_weapon_buttons(screen, y, 10, owned, in_hand);
+    n3ds_update_weapon_buttons(y, 10);
+}
+
+static int N3DS_DrawBottom(uint8_t *screen)
+{
+    auto const p = g_player[screenpeek].ps;
+
+    if (!(p->gm & MODE_GAME) || (g_player[myconnectindex].ps->gm & MODE_MENU))
+        return 0;
+
+    int const bar = G_N3DS_StatusBarOnBottom() ? tilesiz[sbartile()].y : 0;
+    int const buttons = n3ds_weapon_bar ? N3DS_ITEM_ROW_HEIGHT + N3DS_WEAPON_BAR_HEIGHT : 0;
+    int const map_rows = N3DS_BOTTOM_HEIGHT - bar - buttons;
+    int const map_y = n3ds_status_below ? 0 : bar;
+
+    Bmemset(screen, 0, N3DS_BOTTOM_WIDTH * N3DS_BOTTOM_HEIGHT);
+
+    if (bar)
+        N3DS_DrawStatusBar(screen, n3ds_status_below ? map_rows : 0, bar);
+
+    N3DS_DrawMap(screen, map_y, map_rows);
+
+    if (buttons)
+    {
+        N3DS_DrawItems(screen, bar + map_rows);
+        N3DS_DrawWeapons(screen, bar + map_rows + N3DS_ITEM_ROW_HEIGHT);
+    }
+
+    return 1;
+}
+
+static void N3DS_SaveOnSuspend(void)
+{
+    CONFIG_WriteSetup(0);
+}
+
+void G_N3DS_Init(void)
+{
+    // Settings from before the 3DS controls (or none): the 3DS's buttons.
+    if (g_n3dsConfigVersion < 1)
+    {
+        CONFIG_SetGameControllerDefaults();
+        g_n3dsConfigVersion = 1;
+    }
+
+    n3ds_draw_bottom = N3DS_DrawBottom;
+    n3ds_in_game = N3DS_InGame;
+    n3ds_save_on_suspend = N3DS_SaveOnSuspend;
+}
+#endif

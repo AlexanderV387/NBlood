@@ -611,6 +611,46 @@ void CONFIG_SetGameControllerDefaults()
     CONFIG_SetGameControllerDefaultsClear();
     CONFIG_SetGameControllerAxesModern();
 
+#ifdef __3DS__
+    // The n3ds-ports standard: Circle Pad moves, C-stick turns and looks,
+    // R / ZR fire, A opens, B runs, X / Y change weapons, L jumps, ZL
+    // crouches, SELECT shows the map. Duke's inventory on the D-pad (up
+    // uses, left and right choose); down kicks. All of it can be changed in
+    // Controller Setup.
+    static GameControllerButtonSetting const buttons3DS[] =
+    {
+        { CONTROLLER_BUTTON_A, gamefunc_Open },
+        { CONTROLLER_BUTTON_B, gamefunc_Run },
+        { CONTROLLER_BUTTON_X, gamefunc_Next_Weapon },
+        { CONTROLLER_BUTTON_Y, gamefunc_Previous_Weapon },
+        { CONTROLLER_BUTTON_BACK, gamefunc_Map },
+        { CONTROLLER_BUTTON_LEFTSHOULDER, gamefunc_Jump },
+        { CONTROLLER_BUTTON_RIGHTSHOULDER, gamefunc_Fire },
+        { CONTROLLER_BUTTON_DPAD_UP, gamefunc_Inventory },
+        { CONTROLLER_BUTTON_DPAD_LEFT, gamefunc_Inventory_Left },
+        { CONTROLLER_BUTTON_DPAD_RIGHT, gamefunc_Inventory_Right },
+        { CONTROLLER_BUTTON_DPAD_DOWN, gamefunc_Quick_Kick },
+    };
+
+    static GameControllerDigitalAxisSetting const triggers3DS[] =
+    {
+        { CONTROLLER_AXIS_TRIGGERLEFT, 1, gamefunc_Crouch },
+        { CONTROLLER_AXIS_TRIGGERRIGHT, 1, gamefunc_Fire },
+    };
+
+    for (auto const & button : buttons3DS)
+        button.apply();
+
+    for (auto const & trigger : triggers3DS)
+        trigger.apply();
+
+    ud.config.JoystickAimAssist     = 1;
+    ud.config.JoystickAimWeight     = 4;
+    ud.config.JoystickViewCentering = 4;
+    ud.config.controllerRumble = 0;
+    return;
+#endif
+
     static GameControllerButtonSetting const buttons[] =
     {
         { CONTROLLER_BUTTON_A, gamefunc_Open },

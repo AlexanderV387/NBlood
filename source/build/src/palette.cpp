@@ -657,6 +657,41 @@ void paletteMakeLookupTable(int32_t palnum, const char *remapbuf, uint8_t r, uin
     {
         // colored fog case
 
+#ifdef __3DS__
+        // Each table is numshades x 256 searches for the closest color:
+        // seconds at startup on the 3DS. Kept on the SD card, named after
+        // what it is made from.
+        uint64_t key = 14695981039346656037ull;
+        auto hash = [&](const void *data, size_t size) {
+            for (size_t k = 0; k < size; k++)
+                key = (key ^ ((const uint8_t *)data)[k]) * 1099511628211ull;
+        };
+        uint8_t const fog[4] = { r, g, b, (uint8_t)numshades };
+
+        hash(palette, 768);
+        hash(remapbuf, 256);
+        hash(fog, sizeof(fog));
+
+        char cachename[64];
+        Bsnprintf(cachename, sizeof(cachename), "palette-cache/%016llx.bin", (unsigned long long)key);
+
+        if (FILE *cache = fopen(cachename, "rb"))
+        {
+            bool const ok = fread(palookup[palnum], 256, numshades, cache) == (size_t)numshades;
+            fclose(cache);
+
+            if (ok)
+            {
+# if defined(USE_OPENGL)
+                palookupfog[palnum].r = r;
+                palookupfog[palnum].g = g;
+                palookupfog[palnum].b = b;
+# endif
+                return;
+            }
+        }
+#endif
+
         char *ptr2 = palookup[palnum];
 
         for (i=0; i<numshades; i++)
@@ -671,6 +706,16 @@ void paletteMakeLookupTable(int32_t palnum, const char *remapbuf, uint8_t r, uin
                     ptr[2] + mulscale16(b-ptr[2], palscale));
             }
         }
+
+#ifdef __3DS__
+        Bmkdir("palette-cache", 0777);
+
+        if (FILE *cache = fopen(cachename, "wb"))
+        {
+            fwrite(palookup[palnum], 256, numshades, cache);
+            fclose(cache);
+        }
+#endif
     }
 
 #if defined(USE_OPENGL)

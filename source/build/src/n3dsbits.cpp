@@ -982,12 +982,47 @@ static void StopPresenting(void);
 
 // newlib's abort (a failed assert, an uncaught exception, new without
 // memory) ends the program without a word: back in the Homebrew Launcher.
-// This one says where in the log, and stops with Luma's crash screen.
-extern "C" __attribute__((noreturn)) void abort(void)
+// These say why at the end of the log (written directly: the failure may
+// be inside the logging, and logging from here failed again and again
+// until the stack ran out), and stop with Luma's crash screen.
+static volatile int aborting;
+
+static __attribute__((noreturn)) void Stop(const char *text)
 {
-    LOG_F(ERROR, "3DS: abort, called from %p; the game was at \"%s\"", __builtin_return_address(0), n3ds_where);
+    if (aborting++ == 0)
+    {
+        if (FILE *log = fopen(N3DS_GAME_DIR "/" APPBASENAME ".log", "a"))
+        {
+            fputs(text, log);
+            fclose(log);
+        }
+    }
+
     svcBreak(USERBREAK_PANIC);
     for (;;) { }
+}
+
+extern "C" __attribute__((noreturn)) void abort(void)
+{
+    char text[256];
+
+    if (aborting)
+        Stop("");
+
+    snprintf(text, sizeof(text), "3DS: abort, called from %p; the game was at \"%s\"\n", __builtin_return_address(0), n3ds_where);
+    Stop(text);
+}
+
+extern "C" __attribute__((noreturn)) void __assert_func(const char *file, int line, const char *function, const char *expression)
+{
+    char text[512];
+
+    if (aborting)
+        Stop("");
+
+    snprintf(text, sizeof(text), "3DS: assertion \"%s\" failed at %s:%d (%s), called from %p; the game was at \"%s\"\n",
+             expression, file, line, function ? function : "?", __builtin_return_address(0), n3ds_where);
+    Stop(text);
 }
 
 // Leaving any other way: where the game was (with the log still open).

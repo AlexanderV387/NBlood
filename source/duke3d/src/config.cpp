@@ -363,7 +363,11 @@ void CONFIG_SetDefaults(void)
     ud.quote_yoffset          = 0;
     ud.runkey_mode            = 0;
     ud.screen_size            = 4;
+#ifdef __3DS__
+    ud.screen_tilting         = 0;  // an option: dead, the view could end up upside down
+#else
     ud.screen_tilting         = 1;
+#endif
     ud.screenfade             = 1;
     ud.shadow_pal             = 4;
     ud.shadows                = 1;
@@ -690,9 +694,10 @@ void CONFIG_SetGameControllerDefaults()
     for (auto const & button : buttons3DS)
         CONFIG_N3DSSetButtonFunction(button.button, button.function);
 
+    // The view does not level itself while walking (an option).
     ud.config.JoystickAimAssist     = 1;
     ud.config.JoystickAimWeight     = 4;
-    ud.config.JoystickViewCentering = 4;
+    ud.config.JoystickViewCentering = 0;
     ud.config.controllerRumble = 0;
     return;
 #endif

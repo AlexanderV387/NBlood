@@ -33,6 +33,15 @@ int n3ds_is_closing(void);
 FILE *n3ds_fopen_rewrite(const char *name);
 int n3ds_fclose(FILE *file);
 
+// Whether a file or folder exists, from its folder's listing, read the
+// first time: the engine looks for many files that are not there (200
+// tiles###.art, each in several folders and casings), and each look on
+// the SD card takes milliseconds. Letter case does not matter, as on the
+// SD card. Files created or deleted through these update the listings.
+int n3ds_exists(const char *path);
+int n3ds_unlink(const char *path);
+int n3ds_mkdir(const char *path, int mode);
+
 // Counted by platform/3DS/ndsp/ndsp-channel.c.
 extern volatile uint32_t ndspChnListResyncs;
 

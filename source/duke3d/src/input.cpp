@@ -100,6 +100,14 @@ void I_GeneralTriggerClear(void)
 
 int32_t I_EscapeTrigger(void) { return CONTROL_GetUserInput(nullptr)->b_escape; }
 
+#ifdef __3DS__
+// The D-pad is also bound to moving: as a held game function it would move
+// through the menu every frame, without the controller's repeat delay.
+int32_t I_MenuUp(void) { return CONTROL_GetUserInput(nullptr)->dir == dir_Up; }
+int32_t I_MenuDown(void) { return CONTROL_GetUserInput(nullptr)->dir == dir_Down; }
+int32_t I_MenuLeft(void) { return CONTROL_GetUserInput(nullptr)->dir == dir_Left; }
+int32_t I_MenuRight(void) { return CONTROL_GetUserInput(nullptr)->dir == dir_Right; }
+#else
 int32_t I_MenuUp(void)
 {
     return CONTROL_GetUserInput(nullptr)->dir == dir_Up || BUTTON(gamefunc_Move_Forward);
@@ -112,6 +120,7 @@ int32_t I_MenuDown(void)
 
 int32_t I_MenuLeft(void) { return CONTROL_GetUserInput(nullptr)->dir == dir_Left || BUTTON(gamefunc_Turn_Left) || BUTTON(gamefunc_Strafe_Left); }
 int32_t I_MenuRight(void) { return CONTROL_GetUserInput(nullptr)->dir == dir_Right || BUTTON(gamefunc_Turn_Right) || BUTTON(gamefunc_Strafe_Right); }
+#endif
 
 int32_t I_SliderLeft(void) { return I_MenuLeft() || /*MOUSEACTIVECONDITIONAL*/(MOUSE_GetButtons() & M_WHEELDOWN); }
 int32_t I_SliderRight(void) { return I_MenuRight() || /*MOUSEACTIVECONDITIONAL*/(MOUSE_GetButtons() & M_WHEELUP); }

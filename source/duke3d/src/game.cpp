@@ -6301,6 +6301,9 @@ static void G_Startup(void)
     if (numplayers > 1)
         VLOG_F(LOG_NET, "Multiplayer initialized.");
 
+#ifdef __3DS__
+    LOG_F(INFO, "3DS: reading the tiles");
+#endif
     if (artLoadFiles("tiles%03i.art",MAXCACHE1DSIZE) < 0)
         G_GameExit("Failed loading art.");
 
@@ -6851,11 +6854,17 @@ int app_main(int argc, char const* const* argv)
         Xfree(m);
     g_defModules.clear();
 
+#ifdef __3DS__
+    LOG_F(INFO, "3DS: loading the sounds");
+#endif
     cacheAllSounds();
 
     if (enginePostInit())
         G_FatalEngineInitError();
 
+#ifdef __3DS__
+    LOG_F(INFO, "3DS: palette tables");
+#endif
     G_PostLoadPalette();
 
     tileDelete(MIRROR);
@@ -6882,6 +6891,9 @@ int app_main(int argc, char const* const* argv)
 
     g_mostConcurrentPlayers = ud.multimode;  // XXX: redundant?
 
+#ifdef __3DS__
+    LOG_F(INFO, "3DS: writing the settings");
+#endif
     ++ud.executions;
     CONFIG_WriteSetup(1);
     CONFIG_ReadSetup();

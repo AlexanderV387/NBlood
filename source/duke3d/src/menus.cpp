@@ -247,7 +247,7 @@ static MenuMenuFormat_t MMF_Top_Skill =            { {  MENU_MARGIN_CENTER<<16, 
 static MenuMenuFormat_t MMF_Top_Options =          { {  MENU_MARGIN_CENTER<<16, 38<<16, }, -(190<<16) };
 static MenuMenuFormat_t MMF_Top_Joystick_Network = { {  MENU_MARGIN_CENTER<<16, 70<<16, }, -(190<<16) };
 static MenuMenuFormat_t MMF_BigOptions =           { {    MENU_MARGIN_WIDE<<16, 38<<16, }, -(190<<16) };
-#ifdef USE_OPENGL
+#if defined USE_OPENGL || defined __3DS__
 static MenuMenuFormat_t MMF_BigOptionsScrolling =  { {    MENU_MARGIN_WIDE<<16, 38<<16, },  (187<<16) };
 #endif
 static MenuMenuFormat_t MMF_SmallOptions =         { {    MENU_MARGIN_WIDE<<16, 37<<16, },    170<<16 };
@@ -806,6 +806,12 @@ static MenuRangeInt32_t MEO_N3DS_TOUCHSPEED = MAKE_MENURANGE( &n3ds_touch_speed,
 static MenuEntry_t ME_N3DS_TOUCHSPEED = MAKE_MENUENTRY( "Touch speed:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_TOUCHSPEED, RangeInt32 );
 static MenuOption_t MEO_N3DS_RUN = MAKE_MENUOPTION( &MF_Redfont, &MEOS_N3DS_RUN, &n3ds_run_mode );
 static MenuEntry_t ME_N3DS_RUN = MAKE_MENUENTRY( "Run:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_RUN, Option );
+static int32_t MEOSV_N3DS_CENTERING[] = { 0, 4 };
+static MenuOptionSet_t MEOS_N3DS_CENTERING = MAKE_MENUOPTIONSET( MEOSN_OffOn, MEOSV_N3DS_CENTERING, 0x3 );
+static MenuOption_t MEO_N3DS_CENTERING = MAKE_MENUOPTION( &MF_Redfont, &MEOS_N3DS_CENTERING, &ud.config.JoystickViewCentering );
+static MenuEntry_t ME_N3DS_CENTERING = MAKE_MENUENTRY( "View centering:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_CENTERING, Option );
+static MenuOption_t MEO_N3DS_TILTING = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &ud.screen_tilting );
+static MenuEntry_t ME_N3DS_TILTING = MAKE_MENUENTRY( "View tilting:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_TILTING, Option );
 static MenuOption_t MEO_N3DS_FPS = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_show_fps );
 static MenuEntry_t ME_N3DS_FPS = MAKE_MENUENTRY( "FPS counter:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_FPS, Option );
 
@@ -817,6 +823,8 @@ static MenuEntry_t *MEL_N3DS[] = {
     &ME_N3DS_TOUCHTURN,
     &ME_N3DS_TOUCHSPEED,
     &ME_N3DS_RUN,
+    &ME_N3DS_CENTERING,
+    &ME_N3DS_TILTING,
     &ME_N3DS_FPS,
 };
 
@@ -1693,7 +1701,7 @@ static MenuMenu_t M_COLCORR = MAKE_MENUMENU( "Color Correction", &MMF_ColorCorre
 static MenuMenu_t M_SCREENSETUP = MAKE_MENUMENU( "HUD Setup", &MMF_BigOptions, MEL_SCREENSETUP );
 static MenuMenu_t M_DISPLAYSETUP = MAKE_MENUMENU( "Display Setup", &MMF_BigOptions, MEL_DISPLAYSETUP );
 #ifdef __3DS__
-static MenuMenu_t M_N3DS = MAKE_MENUMENU( "Nintendo 3DS", &MMF_BigOptions, MEL_N3DS );
+static MenuMenu_t M_N3DS = MAKE_MENUMENU( "Nintendo 3DS", &MMF_BigOptionsScrolling, MEL_N3DS );
 static MenuMenu_t M_N3DS_BUTTONS = MAKE_MENUMENU( "3DS Buttons", &MMF_KeyboardSetupFuncs, MEL_N3DS_BUTTONS );
 #endif
 static MenuMenu_t M_LOAD = MAKE_MENUMENU_CUSTOMSIZE( s_LoadGame, &MMF_LoadSave, MEL_LOAD );

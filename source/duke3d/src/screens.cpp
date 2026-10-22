@@ -2870,6 +2870,13 @@ void G_N3DS_Init(void)
         g_n3dsConfigVersion = 2;
     }
 
+    // From before the view centering was an option, off by default.
+    if (g_n3dsConfigVersion < 3)
+    {
+        ud.config.JoystickViewCentering = 0;
+        g_n3dsConfigVersion = 3;
+    }
+
     n3ds_draw_bottom = N3DS_DrawBottom;
     n3ds_in_game = N3DS_InGame;
     n3ds_save_on_suspend = N3DS_SaveOnSuspend;

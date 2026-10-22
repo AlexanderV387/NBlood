@@ -125,7 +125,11 @@ static FORCE_INLINE int64_t buildvfs_length(int fd)
 }
 
 #define buildvfs_chdir(dir) chdir(dir)
+#ifdef __3DS__
+# define buildvfs_mkdir(dir, x) n3ds_mkdir(dir, x)
+#else
 #define buildvfs_mkdir(dir, x) Bmkdir(dir, x)
+#endif
 #define buildvfs_getcwd(buf, size) getcwd((buf), (size))
 
 using buildvfs_fd = int;
@@ -153,6 +157,9 @@ static FORCE_INLINE int buildvfs_exists(char const* path)
 {
 #ifdef _WIN32
     return GetFileAttributes(path) != INVALID_FILE_ATTRIBUTES;
+#elif defined __3DS__
+    // From each folder's listing, read once (n3dsbits.h).
+    return n3ds_exists(path);
 #else
     struct Bstat st;
     return !Bstat(path, &st);
@@ -164,7 +171,11 @@ static FORCE_INLINE int buildvfs_isdir(char const *path)
     struct Bstat st;
     return (Bstat(path, &st) ? 0 : (st.st_mode & S_IFDIR) == S_IFDIR);
 }
+#ifdef __3DS__
+# define buildvfs_unlink(path) n3ds_unlink(path)
+#else
 #define buildvfs_unlink(path) unlink(path)
+#endif
 
 #endif
 

@@ -457,8 +457,14 @@ void G_CacheMapData(void)
     if (ud.recstat == 2 || !ud.config.useprecache)
         return;
 
+#ifdef __3DS__
+    LOG_F(INFO, "3DS: loading the sounds");
+#endif
     cacheAllSounds();
 
+#ifdef __3DS__
+    LOG_F(INFO, "3DS: loading the textures");
+#endif
     g_precacheCount = 0;
     Bmemset(gotpic, 0, sizeof(gotpic));
     Bmemset(precachehightile, 0, sizeof(precachehightile));
@@ -524,7 +530,20 @@ void G_CacheMapData(void)
         }
         i++;
 
+#ifdef __3DS__
+        // The loading screen a few times a second: each one waits for
+        // the screen (engineFPSLimit does not wait on the 3DS), and drawn
+        // every few tiles it took most of the time.
+        static uint32_t lastLoadScreen;
+        bool const showLoadScreen = timerGetTicks() - lastLoadScreen >= 250;
+
+        if (showLoadScreen)
+            lastLoadScreen = timerGetTicks();
+
+        if (cntDisplayed+(i&7) < cnt-(i&7) && showLoadScreen)
+#else
         if (cntDisplayed+(i&7) < cnt-(i&7) && engineFPSLimit(true))
+#endif
         {
             int const percentComplete = min(100, tabledivide32(100 * cntDisplayed, g_precacheCount));
             cntDisplayed = logapproach(cntDisplayed, cnt);
@@ -1893,6 +1912,9 @@ static void G_CheckIfStateless()
 
 int G_EnterLevel(int gameMode)
 {
+#ifdef __3DS__
+    LOG_F(INFO, "3DS: loading the level");
+#endif
     vote_map = vote_episode = voting = -1;
 
     ud.respawn_monsters  = ud.m_respawn_monsters;

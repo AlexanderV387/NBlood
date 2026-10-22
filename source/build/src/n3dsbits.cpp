@@ -7,12 +7,18 @@
 #include "sdl_inc.h"
 
 #include <3ds.h>
+#include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <malloc.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #ifndef APPBASENAME
 # define APPBASENAME "eduke32"
@@ -52,6 +58,72 @@ extern "C" int posix_memalign(void **memptr, size_t alignment, size_t size)
     return 0;
 }
 
+// Each folder's names, in lower case.
+static std::unordered_map<std::string, std::unordered_set<std::string>> listings;
+
+static void ForgetListings(void)
+{
+    listings.clear();
+}
+
+static std::string LowerCase(const char *text)
+{
+    std::string lower(text);
+
+    for (auto & c : lower)
+        c = tolower((unsigned char) c);
+
+    return lower;
+}
+
+int n3ds_exists(const char *path)
+{
+    char const *slash = strrchr(path, '/');
+    char const *name = slash ? slash + 1 : path;
+
+    // A folder named with its slash, or "." and "..": asked directly.
+    if (name[0] == '\0' || !strcmp(name, ".") || !strcmp(name, ".."))
+    {
+        struct stat st;
+        return !stat(path, &st);
+    }
+
+    std::string folder = slash == NULL ? "." : slash == path ? "/" : std::string(path, slash - path);
+
+    if (folder.back() == ':')
+        folder += '/';  // the root of a device, "sdmc:/"
+    auto found = listings.find(folder);
+
+    if (found == listings.end())
+    {
+        std::unordered_set<std::string> names;
+
+        if (DIR *dir = opendir(folder.c_str()))
+        {
+            while (struct dirent *entry = readdir(dir))
+                names.insert(LowerCase(entry->d_name));
+
+            closedir(dir);
+        }
+
+        found = listings.emplace(folder, std::move(names)).first;
+    }
+
+    return found->second.count(LowerCase(name)) != 0;
+}
+
+int n3ds_unlink(const char *path)
+{
+    ForgetListings();
+    return unlink(path);
+}
+
+int n3ds_mkdir(const char *path, int mode)
+{
+    ForgetListings();
+    return mkdir(path, mode);
+}
+
 static FILE *rewrite_files[8];
 
 FILE *n3ds_fopen_rewrite(const char *name)
@@ -59,7 +131,10 @@ FILE *n3ds_fopen_rewrite(const char *name)
     FILE *file = fopen(name, "r+b");
 
     if (file == NULL)
+    {
+        ForgetListings();
         return fopen(name, "wb");
+    }
 
     for (auto &f : rewrite_files)
     {

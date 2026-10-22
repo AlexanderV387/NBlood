@@ -980,6 +980,22 @@ static void PresentThread(void *arg)
 
 static void StopPresenting(void);
 
+// newlib's abort (a failed assert, an uncaught exception, new without
+// memory) ends the program without a word: back in the Homebrew Launcher.
+// This one says where in the log, and stops with Luma's crash screen.
+extern "C" __attribute__((noreturn)) void abort(void)
+{
+    LOG_F(ERROR, "3DS: abort, called from %p; the game was at \"%s\"", __builtin_return_address(0), n3ds_where);
+    svcBreak(USERBREAK_PANIC);
+    for (;;) { }
+}
+
+// Leaving any other way: where the game was (with the log still open).
+static void LogExit(void)
+{
+    LOG_F(INFO, "3DS: exit; the game was at \"%s\"", n3ds_where);
+}
+
 // On the system core (1), which the game may use up to 80% of the time.
 // Not on the Old 3DS: its system core already has the audio thread.
 static void StartPresenting(void)
@@ -1015,6 +1031,8 @@ static void StartPresenting(void)
 
     if (present_thread != NULL)
         atexit(StopPresenting);
+
+    atexit(LogExit);
 
     LOG_F(INFO, "3DS: composing the screens %s (core 1 time limit: %d%%, %08lx)",
           present_thread != NULL ? "on another core" : "on the game's core", limit, (unsigned long) result);

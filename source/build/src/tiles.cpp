@@ -399,8 +399,12 @@ void artReadManifest(buildvfs_kfd const fil, artheader_t * const local)
 {
     int16_t *tilesizx = (int16_t *) Xmalloc(local->numtiles * sizeof(int16_t));
     int16_t *tilesizy = (int16_t *) Xmalloc(local->numtiles * sizeof(int16_t));
+    // The animations in one read too: one per tile was thousands of small
+    // reads, slow where each read has a cost of its own (an SD card).
+    uint32_t *picanms = (uint32_t *) Xmalloc(local->numtiles * sizeof(uint32_t));
     kread(fil, tilesizx, local->numtiles*sizeof(int16_t));
     kread(fil, tilesizy, local->numtiles*sizeof(int16_t));
+    kread(fil, picanms, local->numtiles*sizeof(uint32_t));
 
     local->tileread = (uint8_t*)Xcalloc(1, bitmap_size(local->numtiles));
 
@@ -411,8 +415,7 @@ void artReadManifest(buildvfs_kfd const fil, artheader_t * const local)
         int16_t const tiley = B_LITTLE16(tilesizy[localIndex]);
         int32_t const dasiz = tilex * tiley;
 
-        uint32_t picanmdisk;
-        kread(fil, &picanmdisk, sizeof(uint32_t));
+        uint32_t picanmdisk = picanms[localIndex];
 
         if (dasiz == 0)
             continue;
@@ -428,6 +431,7 @@ void artReadManifest(buildvfs_kfd const fil, artheader_t * const local)
 
     DO_FREE_AND_NULL(tilesizx);
     DO_FREE_AND_NULL(tilesizy);
+    DO_FREE_AND_NULL(picanms);
 }
 
 void artPreloadFile(buildvfs_kfd const fil, artheader_t * const local)

@@ -484,6 +484,72 @@ static int32_t kread_grp(int32_t handle, void *buffer, int32_t leng);
 static int32_t klseek_grp(int32_t handle, int32_t offset, int32_t whence);
 static void kclose_grp(int32_t handle);
 
+#ifdef __3DS__
+// The group files are read in blocks when read in order (the tiles of a
+// level, by number, are mostly in the order they are in the file): each
+// read on the SD card has a cost of its own. Reads here and there (the
+// sounds) still read only what they ask for.
+#define GRP_BLOCK_SIZE (128 << 10)
+#define GRP_BLOCK_GAP  (32 << 10)  // how far ahead of the last read is in order
+
+static struct
+{
+    int32_t group = -1, start, length;
+    int32_t lastEnd = -1;
+    char *data;
+} grpblock;
+
+static int32_t kread_grp_buffered(int32_t rootgroupnum, int32_t offset, void *buffer, int32_t leng)
+{
+    auto const fd = groupfil[rootgroupnum];
+
+    bool const inOrder = grpblock.group == rootgroupnum && offset >= grpblock.lastEnd && offset - grpblock.lastEnd <= GRP_BLOCK_GAP;
+
+    if (grpblock.group != rootgroupnum)
+        grpblock.lastEnd = -1;
+
+    if (grpblock.group != rootgroupnum || offset < grpblock.start || offset + leng > grpblock.start + grpblock.length)
+    {
+        if (leng >= GRP_BLOCK_SIZE / 2 || !inOrder)
+        {
+            // Big enough by itself. (A seek costs nothing: the SD card is
+            // only read by the reads.)
+            Blseek(fd, offset, BSEEK_SET);
+
+            int32_t const got = Bread(fd, buffer, leng);
+            groupfilpos[rootgroupnum] = offset + max(got, 0);
+
+            if (grpblock.group != rootgroupnum)
+            {
+                grpblock.group  = rootgroupnum;
+                grpblock.length = 0;
+            }
+
+            grpblock.lastEnd = offset + max(got, 0);
+            return got;
+        }
+
+        if (grpblock.data == nullptr)
+            grpblock.data = (char *)Xmalloc(GRP_BLOCK_SIZE);
+
+        Blseek(fd, offset, BSEEK_SET);
+
+        int32_t const got = Bread(fd, grpblock.data, GRP_BLOCK_SIZE);
+
+        grpblock.group  = rootgroupnum;
+        grpblock.start  = offset;
+        grpblock.length = max(got, 0);
+        groupfilpos[rootgroupnum] = offset + grpblock.length;
+
+        leng = min(leng, grpblock.length);
+    }
+
+    Bmemcpy(buffer, grpblock.data + (offset - grpblock.start), leng);
+    grpblock.lastEnd = offset + leng;
+    return leng;
+}
+#endif
+
 int initgroupfile(const char *filename)
 {
     char buf[70];
@@ -668,6 +734,9 @@ void uninitgroupfile(void)
             DO_FREE_AND_NULL(groupname[i]);
 
             Bclose(groupfil[i]);
+#ifdef __3DS__
+            grpblock.group = -1;
+#endif
             groupfil[i] = -1;
         }
     numgroupfiles = 0;
@@ -884,6 +953,7 @@ buildvfs_kfd kopen4loadfrommod(const char *fileName, char searchfirst)
     return (kFile == buildvfs_kfd_invalid) ? kopen4load(fileName, searchfirst) : kFile;
 }
 
+
 int32_t kread_internal(int32_t handle, void *buffer, int32_t leng, const uint8_t *arraygrp, const intptr_t *arrayhan, int32_t *arraypos)
 {
     int32_t filenum = arrayhan[handle];
@@ -917,16 +987,24 @@ int32_t kread_internal(int32_t handle, void *buffer, int32_t leng, const uint8_t
     if (EDUKE32_PREDICT_TRUE(groupfil[rootgroupnum] != -1))
     {
         i += gfileoffs[groupnum][filenum]+arraypos[handle];
+#ifndef __3DS__
         if (i != groupfilpos[rootgroupnum])
         {
             Blseek(groupfil[rootgroupnum],i,BSEEK_SET);
             groupfilpos[rootgroupnum] = i;
         }
+#endif
         leng = min(leng,(gfileoffs[groupnum][filenum+1]-gfileoffs[groupnum][filenum])-arraypos[handle]);
+#ifdef __3DS__
+        leng = kread_grp_buffered(rootgroupnum, i, buffer, leng);
+        arraypos[handle] += leng;
+        return leng;
+#else
         leng = Bread(groupfil[rootgroupnum],buffer,leng);
         arraypos[handle] += leng;
         groupfilpos[rootgroupnum] += leng;
         return leng;
+#endif
     }
 
     return 0;

@@ -503,6 +503,11 @@ static MenuEntry_t ME_GAMESETUP_CHEATS = MAKE_MENUENTRY( "Cheats", &MF_Redfont, 
 
 static MenuEntry_t *MEL_GAMESETUP[] = {
     &ME_ADULTMODE,
+#ifdef __3DS__
+    // And the controls' that are not the PC's.
+    &ME_GAMESETUP_AIM_AUTO,
+    &ME_GAMESETUP_WEAPSWITCH_PICKUP,
+#else
 #if defined STARTUP_SETUP_WINDOW && !defined EDUKE32_RETAIL_MENU
     &ME_GAMESETUP_STARTWIN,
 #endif
@@ -510,6 +515,7 @@ static MenuEntry_t *MEL_GAMESETUP[] = {
     &ME_GAMESETUP_DEMOREC,
 #ifdef _WIN32
     &ME_GAMESETUP_UPDATES,
+#endif
 #endif
 #endif
     &ME_GAMESETUP_CHEATS,
@@ -783,7 +789,7 @@ static MenuEntry_t ME_CheatCodes[] = {
 // The 3DS's options (n3dsbits.h).
 static char const *MEOSN_N3DS_STATUSBAR[] = { "Above the map", "Below the map" };
 static MenuOptionSet_t MEOS_N3DS_STATUSBAR = MAKE_MENUOPTIONSET( MEOSN_N3DS_STATUSBAR, NULL, 0x2 );
-static char const *MEOSN_N3DS_RUN[] = { "Hold button", "Press once", "Stick pushed" };
+static char const *MEOSN_N3DS_RUN[] = { "Hold button", "Press once", "Stick pushed", "Always" };
 static MenuOptionSet_t MEOS_N3DS_RUN = MAKE_MENUOPTIONSET( MEOSN_N3DS_RUN, NULL, 0x2 );
 
 static MenuOption_t MEO_N3DS_MAP = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_bottom_map );
@@ -793,7 +799,7 @@ static MenuEntry_t ME_N3DS_STATUSBAR = MAKE_MENUENTRY( "Status bar:", &MF_Redfon
 static MenuOption_t MEO_N3DS_CLASSICHUD = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_classic_hud );
 static MenuEntry_t ME_N3DS_CLASSICHUD = MAKE_MENUENTRY( "Classic HUD:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_CLASSICHUD, Option );
 static MenuOption_t MEO_N3DS_BUTTONS = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_weapon_bar );
-static MenuEntry_t ME_N3DS_BUTTONS = MAKE_MENUENTRY( "Touch buttons:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_BUTTONS, Option );
+static MenuEntry_t ME_N3DS_BUTTONS = MAKE_MENUENTRY( "Weapon buttons:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_BUTTONS, Option );
 static MenuOption_t MEO_N3DS_TOUCHTURN = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_touch_turn );
 static MenuEntry_t ME_N3DS_TOUCHTURN = MAKE_MENUENTRY( "Touch turning:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_TOUCHTURN, Option );
 static MenuRangeInt32_t MEO_N3DS_TOUCHSPEED = MAKE_MENURANGE( &n3ds_touch_speed, &MF_Redfont, 1, 10, 0, 10, DisplayTypeInteger );
@@ -815,12 +821,94 @@ static MenuEntry_t *MEL_N3DS[] = {
 };
 
 MAKE_MENU_TOP_ENTRYLINK( "Nintendo 3DS", MEF_OptionsMenu, OPTIONS_N3DS, MENU_N3DS );
+MAKE_MENU_TOP_ENTRYLINK( "3DS Buttons", MEF_OptionsMenu, OPTIONS_N3DS_BUTTONS, MENU_N3DS_BUTTONS );
+
+// The 3DS's buttons: a row per action, with up to two buttons (a button
+// has one action). A on a column waits for the button to put there.
+static struct { int function; char const *name; } const n3ds_actions[] = {
+    { gamefunc_Fire, "Fire" },
+    { gamefunc_Open, "Open / Use" },
+    { gamefunc_Jump, "Jump" },
+    { gamefunc_Crouch, "Crouch" },
+    { gamefunc_Run, "Run" },
+    { gamefunc_Next_Weapon, "Next weapon" },
+    { gamefunc_Previous_Weapon, "Previous weapon" },
+    { gamefunc_Quick_Kick, "Quick kick" },
+    { gamefunc_Map, "Map" },
+    { gamefunc_Inventory, "Use item" },
+    { gamefunc_Inventory_Left, "Previous item" },
+    { gamefunc_Inventory_Right, "Next item" },
+    { gamefunc_TurnAround, "Turn around" },
+    { gamefunc_Center_View, "Center view" },
+};
+
+#define N3DS_NUM_ACTIONS ARRAY_SSIZE(n3ds_actions)
+
+static char const *MEOSN_N3DS_BUTTONS[256];
+static uint8_t n3ds_buttonColumns[N3DS_NUM_ACTIONS][2];
+static MenuCustom2Col_t MEO_N3DS_BUTTONCOLS[N3DS_NUM_ACTIONS];
+static MenuEntry_t ME_N3DS_BUTTONS_TEMPLATE = MAKE_MENUENTRY( NULL, &MF_Minifont, &MEF_KBFuncList, NULL, Custom2Col );
+static MenuEntry_t ME_N3DS_BUTTONS_ACTIONS[N3DS_NUM_ACTIONS];
+
+static MenuLink_t MEO_N3DS_BUTTONS_RESET = { MENU_N3DS_BUTTONSVERIFY, MA_None, };
+static MenuEntry_t ME_N3DS_BUTTONS_RESET = MAKE_MENUENTRY( "Restore the defaults", &MF_Minifont, &MEF_KBFuncList, &MEO_N3DS_BUTTONS_RESET, Link );
+
+static MenuEntry_t *MEL_N3DS_BUTTONS[N3DS_NUM_ACTIONS + 2];
+
+// The columns from the settings.
+static void Menu_N3DSRefreshButtons(void)
+{
+    Bmemset(n3ds_buttonColumns, 0xFF, sizeof(n3ds_buttonColumns));
+
+    for (int button = 0; button < N3DS_NUM_BUTTONS; ++button)
+    {
+        int const function = CONFIG_N3DSButtonFunction(button);
+
+        for (int i = 0; i < N3DS_NUM_ACTIONS; ++i)
+        {
+            if (n3ds_actions[i].function != function)
+                continue;
+
+            int const column = n3ds_buttonColumns[i][0] == 0xFF ? 0 : 1;
+
+            if (n3ds_buttonColumns[i][column] == 0xFF)
+                n3ds_buttonColumns[i][column] = button;
+            break;
+        }
+    }
+}
+
+static void Menu_N3DSSetUpButtons(void)
+{
+    for (auto & name : MEOSN_N3DS_BUTTONS)
+        name = "  --";
+
+    for (int i = 0; i < N3DS_NUM_BUTTONS; ++i)
+        MEOSN_N3DS_BUTTONS[i] = n3ds_button_names[i];
+
+    for (int i = 0; i < N3DS_NUM_ACTIONS; ++i)
+    {
+        MEO_N3DS_BUTTONCOLS[i] = { { &n3ds_buttonColumns[i][0], &n3ds_buttonColumns[i][1] }, MEOSN_N3DS_BUTTONS, &MF_Minifont, N3DS_NUM_BUTTONS, 54<<16, 0, i };
+        ME_N3DS_BUTTONS_ACTIONS[i] = ME_N3DS_BUTTONS_TEMPLATE;
+        ME_N3DS_BUTTONS_ACTIONS[i].name = n3ds_actions[i].name;
+        ME_N3DS_BUTTONS_ACTIONS[i].entry = &MEO_N3DS_BUTTONCOLS[i];
+        MEL_N3DS_BUTTONS[i] = &ME_N3DS_BUTTONS_ACTIONS[i];
+    }
+
+    MEL_N3DS_BUTTONS[N3DS_NUM_ACTIONS] = &ME_Space4_Bluefont;
+    MEL_N3DS_BUTTONS[N3DS_NUM_ACTIONS + 1] = &ME_N3DS_BUTTONS_RESET;
+}
 #endif
 
 static MenuEntry_t *MEL_OPTIONS[] = {
 #ifdef __3DS__
+    // Without the PC's: video modes, keyboard, mouse and PC controllers.
     &ME_OPTIONS_N3DS,
-#endif
+    &ME_OPTIONS_N3DS_BUTTONS,
+    &ME_OPTIONS_GAMESETUP,
+    &ME_OPTIONS_DISPLAYSETUP,
+    &ME_OPTIONS_SOUNDSETUP,
+#else
 #ifndef EDUKE32_RETAIL_MENU
     &ME_OPTIONS_GAMESETUP,
 #endif
@@ -837,6 +925,7 @@ static MenuEntry_t *MEL_OPTIONS[] = {
 #ifdef EDUKE32_RETAIL_MENU
     &ME_GAMESETUP_SAVESETUP,
     &ME_OPTIONS_CHEATS
+#endif
 #endif
 };
 
@@ -882,7 +971,10 @@ static MenuEntry_t *MEL_VIDEOSETUP[] = {
 static MenuEntry_t *MEL_DISPLAYSETUP[] = {
     &ME_DISPLAYSETUP_SCREENSETUP,
     &ME_DISPLAYSETUP_COLORCORR,
-#ifndef EDUKE32_ANDROID_MENU
+#ifdef __3DS__
+    // The screen is the 3DS's: no video modes, aspect ratios or voxels.
+    &ME_DISPLAYSETUP_FOV,
+#elif !defined EDUKE32_ANDROID_MENU
     &ME_DISPLAYSETUP_VIDEOSETUP,
     &ME_DISPLAYSETUP_LANGUAGE,
     &ME_DISPLAYSETUP_ASPECTRATIO,
@@ -1396,7 +1488,7 @@ static MenuEntry_t *MEL_SOUND[] = {
     &ME_SOUND_MUSIC,
     &ME_SOUND_VOLUME_MUSIC,
     &ME_SOUND_DUKETALK,
-#ifndef EDUKE32_RETAIL_MENU
+#if !defined EDUKE32_RETAIL_MENU && !defined __3DS__
     &ME_SOUND_DEVSETUP,
 #endif
 };
@@ -1602,6 +1694,7 @@ static MenuMenu_t M_SCREENSETUP = MAKE_MENUMENU( "HUD Setup", &MMF_BigOptions, M
 static MenuMenu_t M_DISPLAYSETUP = MAKE_MENUMENU( "Display Setup", &MMF_BigOptions, MEL_DISPLAYSETUP );
 #ifdef __3DS__
 static MenuMenu_t M_N3DS = MAKE_MENUMENU( "Nintendo 3DS", &MMF_BigOptions, MEL_N3DS );
+static MenuMenu_t M_N3DS_BUTTONS = MAKE_MENUMENU( "3DS Buttons", &MMF_KeyboardSetupFuncs, MEL_N3DS_BUTTONS );
 #endif
 static MenuMenu_t M_LOAD = MAKE_MENUMENU_CUSTOMSIZE( s_LoadGame, &MMF_LoadSave, MEL_LOAD );
 static MenuMenu_t M_SAVE = MAKE_MENUMENU_CUSTOMSIZE( s_SaveGame, &MMF_LoadSave, MEL_SAVE );
@@ -1645,6 +1738,9 @@ static MenuVerify_t M_RESETPLAYER = { CURSOR_CENTER_3LINE, MENU_CLOSE, MA_None, 
 
 static MenuVerify_t M_COLCORRRESETVERIFY = { CURSOR_CENTER_2LINE, MENU_COLCORR, MA_None, };
 static MenuVerify_t M_KEYSRESETVERIFY = { CURSOR_CENTER_2LINE, MENU_KEYBOARDSETUP, MA_None, };
+#ifdef __3DS__
+static MenuVerify_t M_N3DS_BUTTONSVERIFY = { CURSOR_CENTER_2LINE, MENU_N3DS_BUTTONS, MA_None, };
+#endif
 static MenuVerify_t M_KEYSCLASSICVERIFY = { CURSOR_CENTER_2LINE, MENU_KEYBOARDSETUP, MA_None, };
 static MenuVerify_t M_JOYSTANDARDVERIFY = { CURSOR_CENTER_2LINE, MENU_JOYSTICKSETUP, MA_None, };
 static MenuVerify_t M_KEYOVERRIDEVERIFY = { CURSOR_BOTTOMRIGHT, MENU_KEYBOARDKEYS, MA_None, };
@@ -1707,6 +1803,8 @@ static Menu_t Menus[] = {
     { &M_DISPLAYSETUP, MENU_DISPLAYSETUP, MENU_OPTIONS, MA_Return, Menu },
 #ifdef __3DS__
     { &M_N3DS, MENU_N3DS, MENU_OPTIONS, MA_Return, Menu },
+    { &M_N3DS_BUTTONS, MENU_N3DS_BUTTONS, MENU_OPTIONS, MA_Return, Menu },
+    { &M_N3DS_BUTTONSVERIFY, MENU_N3DS_BUTTONSVERIFY, MENU_N3DS_BUTTONS, MA_None, Verify },
 #endif
 #if defined POLYMER
     { &M_POLYMER, MENU_POLYMER, MENU_RENDERER, MA_Return, Menu },
@@ -2368,6 +2466,9 @@ void Menu_Init(void)
     }
 
     M_KEYBOARDKEYS.numEntries = NUMGAMEFUNCTIONS;
+#ifdef __3DS__
+    Menu_N3DSSetUpButtons();
+#endif
     for (i = 0; i < ARRAY_SSIZE(MenuMouseData); ++i)
     {
         auto &mb = MenuMouseData[i];
@@ -3341,6 +3442,12 @@ static void Menu_PreDraw(MenuID_t cm, MenuEntry_t* entry, const vec2_t origin)
         videoFadeToBlack(1);
         Menu_DrawVerifyPrompt(origin.x, origin.y, "Reset keys to classic defaults?");
         break;
+#ifdef __3DS__
+    case MENU_N3DS_BUTTONSVERIFY:
+        videoFadeToBlack(1);
+        Menu_DrawVerifyPrompt(origin.x, origin.y, "Restore the default buttons?");
+        break;
+#endif
     case MENU_JOYDEFAULTVERIFY:
         videoFadeToBlack(1);
         Menu_DrawVerifyPrompt(origin.x, origin.y, "Reset controller settings to default?");
@@ -3725,8 +3832,58 @@ static void Menu_PreOptionListDraw(MenuEntry_t *entry, const vec2_t origin)
 }
 
 
+#ifdef __3DS__
+static unsigned n3ds_captureHeld;  // the buttons held when the capture began
+static int n3ds_captured = -1;     // the button pressed, until all are let go
+
+// The button pressed for the selected action and column. Once every
+// button is let go (or the menu would take it), it is put there: taken
+// from the action that had it; the same button again empties the column.
+static int32_t Menu_N3DSCaptureButton(MenuEntry_t *entry)
+{
+    auto const column = (MenuCustom2Col_t*)entry->entry;
+    unsigned const all = (1u << N3DS_NUM_BUTTONS) - 1;
+    unsigned const held = n3ds_buttons_held();
+
+    if (n3ds_captured < 0)
+    {
+        unsigned const pressed = held & ~n3ds_captureHeld & all;
+
+        n3ds_captureHeld = held;
+
+        if (pressed == 0)
+            return 0;
+
+        n3ds_captured = __builtin_ctz(pressed);
+    }
+
+    if (held & all)
+        return 0;
+
+    int const action = column->linkIndex;
+    uint8_t const old = *column->column[M_N3DS_BUTTONS.currentColumn];
+
+    if (old != 0xFF)
+        CONFIG_N3DSSetButtonFunction(old, -1);
+
+    if (old != n3ds_captured)
+        CONFIG_N3DSSetButtonFunction(n3ds_captured, n3ds_actions[action].function);
+
+    n3ds_captured = -1;
+    Menu_N3DSRefreshButtons();
+    I_ClearAllInput();
+    S_PlaySound(PISTOL_BODYHIT);
+    return -1;
+}
+#endif
+
 static int32_t Menu_PreCustom2ColScreen(MenuEntry_t *entry)
 {
+#ifdef __3DS__
+    if (g_currentMenu == MENU_N3DS_BUTTONS)
+        return Menu_N3DSCaptureButton(entry);
+#endif
+
     if (g_currentMenu == MENU_KEYBOARDKEYS)
     {
         auto column = (MenuCustom2Col_t*)entry->entry;
@@ -3787,6 +3944,20 @@ static int32_t Menu_PreCustom2ColScreen(MenuEntry_t *entry)
 
 static void Menu_PreCustom2ColScreenDraw(MenuEntry_t *entry, const vec2_t origin)
 {
+#ifdef __3DS__
+    if (g_currentMenu == MENU_N3DS_BUTTONS)
+    {
+        Bsprintf(tempbuf, "Press the 3DS button for\n"
+                          "\"%s\"\n"
+                          "\n"
+                          "The same button again removes it\n"
+                          "START cancels"
+                          , entry->name);
+        mgametextcenter(origin.x, origin.y + (90<<16), tempbuf);
+        return;
+    }
+#endif
+
     if (g_currentMenu == MENU_KEYBOARDKEYS)
     {
         Bsprintf(tempbuf, "Press the key to assign as\n"
@@ -4389,6 +4560,15 @@ static void Menu_EntryOptionDidModify(MenuEntry_t *entry)
 
 static void Menu_Custom2ColScreen(/*MenuEntry_t *entry*/)
 {
+#ifdef __3DS__
+    if (g_currentMenu == MENU_N3DS_BUTTONS)
+    {
+        // The A that opened it is not the answer.
+        n3ds_captureHeld = n3ds_buttons_held();
+        n3ds_captured = -1;
+    }
+#endif
+
     if (g_currentMenu == MENU_KEYBOARDKEYS)
     {
         KB_FlushKeyboardQueue();
@@ -4684,6 +4864,15 @@ static void Menu_Verify(int32_t input)
         if (input)
             CONFIG_SetGameControllerDefaults();
         break;
+#ifdef __3DS__
+    case MENU_N3DS_BUTTONSVERIFY:
+        if (input)
+        {
+            CONFIG_SetGameControllerDefaults();
+            Menu_N3DSRefreshButtons();
+        }
+        break;
+#endif
     case MENU_KEYOVERRIDEVERIFY:
         Bassert(s_savedKeyColumn != nullptr);
         if (input)
@@ -5175,6 +5364,12 @@ static void Menu_AboutToStartDisplaying(Menu_t * m)
 {
     switch (m->menuID)
     {
+#ifdef __3DS__
+    case MENU_N3DS_BUTTONS:
+        Menu_N3DSRefreshButtons();
+        break;
+#endif
+
     case MENU_MAIN:
         if (FURY)
             ME_MAIN_LOADGAME.name = s_Continue;
@@ -5385,7 +5580,8 @@ static void Menu_ChangingTo(Menu_t * m)
 // menu or the game (a crash or an empty battery would lose them).
 static int Menu_IsSettings(MenuID_t id)
 {
-    return (id >= MENU_GAMESETUP && id < MENU_LOAD) || (id >= MENU_SOUND && id < MENU_SAVESETUP) || id == MENU_PLAYER;
+    return (id >= MENU_GAMESETUP && id < MENU_LOAD) || (id >= MENU_SOUND && id < MENU_SAVESETUP) || id == MENU_PLAYER
+           || id == MENU_N3DS_BUTTONSVERIFY;
 }
 
 static void Menu_SaveLeavingSettings(MenuID_t from, MenuID_t to)
@@ -6734,6 +6930,9 @@ static void Menu_Recurse(MenuID_t cm, const vec2_t origin)
     case MENU_KEYSCLASSICVERIFY:
     case MENU_JOYDEFAULTVERIFY:
     case MENU_KEYOVERRIDEVERIFY:
+#ifdef __3DS__
+    case MENU_N3DS_BUTTONSVERIFY:
+#endif
     case MENU_ADULTPASSWORD:
     case MENU_CHEATENTRY:
     case MENU_CHEAT_WARP:

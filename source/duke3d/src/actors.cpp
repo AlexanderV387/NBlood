@@ -1478,6 +1478,10 @@ static void P_FinishWaterChange(int, DukePlayer_t *, int, int, int);
 
 static FORCE_INLINE fix16_t P_GetQ16AngleDeltaForTic(DukePlayer_t const *pPlayer) { return getq16angledelta(pPlayer->oq16ang, pPlayer->q16ang); }
 
+#ifdef __3DS__
+static int32_t n3ds_deadTics[MAXPLAYERS];  // game tics since each player died
+#endif
+
 ACTOR_STATIC void G_MovePlayers(void)
 {
     int spriteNum = headspritestat[STAT_PLAYER];
@@ -1595,6 +1599,9 @@ ACTOR_STATIC void G_MovePlayers(void)
 
                 if (pSprite->extra > 0)
                 {
+#ifdef __3DS__
+                    n3ds_deadTics[playerNum] = 0;
+#endif
 #ifndef EDUKE32_STANDALONE
                     if (!FURY)
                     {
@@ -1617,6 +1624,19 @@ ACTOR_STATIC void G_MovePlayers(void)
 
                     pPlayer->newowner = -1;
 
+#ifdef __3DS__
+                    // The view turns to the killer for two seconds, then
+                    // stays: following it as it moved kept the view turning.
+                    if (n3ds_deadTics[playerNum] < INT32_MAX)
+                        ++n3ds_deadTics[playerNum];
+
+                    if (n3ds_deadTics[playerNum] % (GAMETICSPERSEC * 5) == 1)
+                        LOG_F(INFO, "3DS: dead for %d s: angle %d, tilt %d, killer %d (tile %d)", n3ds_deadTics[playerNum] / GAMETICSPERSEC,
+                              fix16_to_int(pPlayer->q16ang), pPlayer->rotscrnang, pPlayer->wackedbyactor,
+                              pPlayer->wackedbyactor >= 0 ? sprite[pPlayer->wackedbyactor].picnum : -1);
+
+                    if (n3ds_deadTics[playerNum] <= GAMETICSPERSEC * 2)
+#endif
                     if (pPlayer->wackedbyactor >= 0 && sprite[pPlayer->wackedbyactor].statnum < MAXSTATUS)
                     {
                         thisPlayer.smoothcamera = true;

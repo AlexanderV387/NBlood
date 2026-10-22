@@ -2824,8 +2824,10 @@ static int N3DS_DrawBottom(uint8_t *screen)
     if (!(p->gm & MODE_GAME) || (g_player[myconnectindex].ps->gm & MODE_MENU))
         return 0;
 
+    // The items row is always there (the items have no buttons by
+    // default); the weapon buttons are an option.
     int const bar = G_N3DS_StatusBarOnBottom() ? tilesiz[sbartile()].y : 0;
-    int const buttons = n3ds_weapon_bar ? N3DS_ITEM_ROW_HEIGHT + N3DS_WEAPON_BAR_HEIGHT : 0;
+    int const buttons = N3DS_ITEM_ROW_HEIGHT + (n3ds_weapon_bar ? N3DS_WEAPON_BAR_HEIGHT : 0);
     int const map_rows = N3DS_BOTTOM_HEIGHT - bar - buttons;
     int const map_y = n3ds_status_below ? 0 : bar;
 
@@ -2839,10 +2841,11 @@ static int N3DS_DrawBottom(uint8_t *screen)
 
     N3DS_DrawMap(screen, map_y, map_rows);
 
-    if (buttons)
+    N3DS_WHERE("bottom: items");
+    N3DS_DrawItems(screen, bar + map_rows);
+
+    if (n3ds_weapon_bar)
     {
-        N3DS_WHERE("bottom: items");
-        N3DS_DrawItems(screen, bar + map_rows);
         N3DS_WHERE("bottom: weapons");
         N3DS_DrawWeapons(screen, bar + map_rows + N3DS_ITEM_ROW_HEIGHT);
     }
@@ -2859,11 +2862,12 @@ static void N3DS_SaveOnSuspend(void)
 
 void G_N3DS_Init(void)
 {
-    // Settings from before the 3DS controls (or none): the 3DS's buttons.
-    if (g_n3dsConfigVersion < 1)
+    // Settings from before the 3DS controls (or none), or from before
+    // the D-pad moved: the 3DS's buttons.
+    if (g_n3dsConfigVersion < 2)
     {
         CONFIG_SetGameControllerDefaults();
-        g_n3dsConfigVersion = 1;
+        g_n3dsConfigVersion = 2;
     }
 
     n3ds_draw_bottom = N3DS_DrawBottom;

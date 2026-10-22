@@ -35,6 +35,12 @@ void CONFIG_SetDefaultKeys(const char (*keyptr)[MAXGAMEFUNCLEN], bool lazy=false
 
 void CONFIG_SetGameControllerDefaults(void);
 void CONFIG_SetGameControllerDefaultsClear(void);
+#ifdef __3DS__
+// The game function of a 3DS button (N3DS_BUTTON_*), or -1; a button has
+// one function.
+int CONFIG_N3DSButtonFunction(int button);
+void CONFIG_N3DSSetButtonFunction(int button, int function);
+#endif
 
 int32_t CONFIG_GetMapBestTime(char const *mapname, uint8_t const *mapmd4);
 int     CONFIG_SetMapBestTime(uint8_t const *mapmd4, int32_t tm);

@@ -5176,8 +5176,14 @@ FAKE_F3:
     if (BUTTON(gamefunc_AutoRun))
     {
         CONTROL_ClearButton(gamefunc_AutoRun);
+#ifdef __3DS__
+        // Between "Always" and "Hold button" (n3dsbits.h).
+        n3ds_run_mode = n3ds_run_mode == N3DS_RUN_ALWAYS ? N3DS_RUN_HOLD : N3DS_RUN_ALWAYS;
+        P_DoQuote(QUOTE_RUN_MODE_OFF + (n3ds_run_mode == N3DS_RUN_ALWAYS), &myplayer);
+#else
         ud.auto_run = 1-ud.auto_run;
         P_DoQuote(QUOTE_RUN_MODE_OFF + ud.auto_run, &myplayer);
+#endif
     }
 
     if (BUTTON(gamefunc_Map))

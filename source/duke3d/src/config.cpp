@@ -28,6 +28,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "vfs.h"
 
+#ifdef __3DS__
+# include "n3dsbits.h"
+#endif
+
 #ifdef __ANDROID__
 # include "android.h"
 #endif
@@ -127,6 +131,49 @@ static void CONFIG_SetJoystickAnalogAxisFunction(int i, int function)
     ud.config.JoystickAnalogueAxes[i] = function;
     CONTROL_MapAnalogAxis(i, function);
 }
+
+#ifdef __3DS__
+// The 3DS's reassignable buttons (n3dsbits.h): ZL and ZR are the
+// controller's triggers, pushed all the way; the others its buttons.
+static int N3DS_Trigger(int button)
+{
+    return button == N3DS_BUTTON_ZL ? CONTROLLER_AXIS_TRIGGERLEFT : button == N3DS_BUTTON_ZR ? CONTROLLER_AXIS_TRIGGERRIGHT : -1;
+}
+
+static int N3DS_ControllerButton(int button)
+{
+    static int const buttons[N3DS_NUM_BUTTONS] =
+    {
+        CONTROLLER_BUTTON_A, CONTROLLER_BUTTON_B, CONTROLLER_BUTTON_X, CONTROLLER_BUTTON_Y,
+        CONTROLLER_BUTTON_LEFTSHOULDER, CONTROLLER_BUTTON_RIGHTSHOULDER, -1, -1, CONTROLLER_BUTTON_BACK,
+    };
+
+    return buttons[button];
+}
+
+int CONFIG_N3DSButtonFunction(int button)
+{
+    int const trigger = N3DS_Trigger(button);
+
+    if (trigger >= 0)
+        return ud.config.JoystickDigitalFunctions[trigger][1];
+
+    return ud.config.JoystickFunctions[N3DS_ControllerButton(button)][0];
+}
+
+void CONFIG_N3DSSetButtonFunction(int button, int function)
+{
+    int const trigger = N3DS_Trigger(button);
+
+    if (trigger >= 0)
+        CONFIG_SetJoystickDigitalAxisFunction(trigger, 1, function);
+    else
+    {
+        CONFIG_SetJoystickButtonFunction(N3DS_ControllerButton(button), 0, function);
+        CONFIG_SetJoystickButtonFunction(N3DS_ControllerButton(button), 1, -1);
+    }
+}
+#endif
 
 
 void CONFIG_SetDefaultKeys(const char (*keyptr)[MAXGAMEFUNCLEN], bool lazy/*=false*/)
@@ -612,37 +659,36 @@ void CONFIG_SetGameControllerDefaults()
     CONFIG_SetGameControllerAxesModern();
 
 #ifdef __3DS__
-    // The n3ds-ports standard: Circle Pad moves, C-stick turns and looks,
-    // R / ZR fire, A opens, B runs, X / Y change weapons, L jumps, ZL
-    // crouches, SELECT shows the map. Duke's inventory on the D-pad (up
-    // uses, left and right choose); down kicks. All of it can be changed in
-    // Controller Setup.
-    static GameControllerButtonSetting const buttons3DS[] =
+    // The n3ds-ports standard: the Circle Pad and the D-pad move, the
+    // C-stick turns and looks, R / ZR fire, A opens, B jumps, ZL runs, L
+    // crouches, X / Y change weapons, SELECT shows the map. The items are
+    // used from the bottom screen. Changed in Options > 3DS Buttons.
+    static GameControllerButtonSetting const dpad3DS[] =
     {
-        { CONTROLLER_BUTTON_A, gamefunc_Open },
-        { CONTROLLER_BUTTON_B, gamefunc_Run },
-        { CONTROLLER_BUTTON_X, gamefunc_Next_Weapon },
-        { CONTROLLER_BUTTON_Y, gamefunc_Previous_Weapon },
-        { CONTROLLER_BUTTON_BACK, gamefunc_Map },
-        { CONTROLLER_BUTTON_LEFTSHOULDER, gamefunc_Jump },
-        { CONTROLLER_BUTTON_RIGHTSHOULDER, gamefunc_Fire },
-        { CONTROLLER_BUTTON_DPAD_UP, gamefunc_Inventory },
-        { CONTROLLER_BUTTON_DPAD_LEFT, gamefunc_Inventory_Left },
-        { CONTROLLER_BUTTON_DPAD_RIGHT, gamefunc_Inventory_Right },
-        { CONTROLLER_BUTTON_DPAD_DOWN, gamefunc_Quick_Kick },
+        { CONTROLLER_BUTTON_DPAD_UP, gamefunc_Move_Forward },
+        { CONTROLLER_BUTTON_DPAD_DOWN, gamefunc_Move_Backward },
+        { CONTROLLER_BUTTON_DPAD_LEFT, gamefunc_Strafe_Left },
+        { CONTROLLER_BUTTON_DPAD_RIGHT, gamefunc_Strafe_Right },
     };
 
-    static GameControllerDigitalAxisSetting const triggers3DS[] =
+    static struct { int button, function; } const buttons3DS[] =
     {
-        { CONTROLLER_AXIS_TRIGGERLEFT, 1, gamefunc_Crouch },
-        { CONTROLLER_AXIS_TRIGGERRIGHT, 1, gamefunc_Fire },
+        { N3DS_BUTTON_R, gamefunc_Fire },
+        { N3DS_BUTTON_ZR, gamefunc_Fire },
+        { N3DS_BUTTON_A, gamefunc_Open },
+        { N3DS_BUTTON_B, gamefunc_Jump },
+        { N3DS_BUTTON_ZL, gamefunc_Run },
+        { N3DS_BUTTON_L, gamefunc_Crouch },
+        { N3DS_BUTTON_X, gamefunc_Next_Weapon },
+        { N3DS_BUTTON_Y, gamefunc_Previous_Weapon },
+        { N3DS_BUTTON_SELECT, gamefunc_Map },
     };
 
-    for (auto const & button : buttons3DS)
+    for (auto const & button : dpad3DS)
         button.apply();
 
-    for (auto const & trigger : triggers3DS)
-        trigger.apply();
+    for (auto const & button : buttons3DS)
+        CONFIG_N3DSSetButtonFunction(button.button, button.function);
 
     ud.config.JoystickAimAssist     = 1;
     ud.config.JoystickAimWeight     = 4;

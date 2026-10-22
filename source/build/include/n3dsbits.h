@@ -115,6 +115,30 @@ void n3ds_draw_weapon_buttons(uint8_t *screen, int y, int slots, unsigned owned,
 void n3ds_update_weapon_buttons(int y, int slots);
 
 // ==========================================================================
+// The buttons a game function can be assigned to (START is the menu, the
+// D-pad moves).
+
+enum
+{
+    N3DS_BUTTON_A,
+    N3DS_BUTTON_B,
+    N3DS_BUTTON_X,
+    N3DS_BUTTON_Y,
+    N3DS_BUTTON_L,
+    N3DS_BUTTON_R,
+    N3DS_BUTTON_ZL,
+    N3DS_BUTTON_ZR,
+    N3DS_BUTTON_SELECT,
+    N3DS_NUM_BUTTONS
+};
+
+extern char const *const n3ds_button_names[N3DS_NUM_BUTTONS];
+
+// The buttons held: a bit per N3DS_BUTTON_*, and N3DS_START_HELD.
+#define N3DS_START_HELD (1u << N3DS_NUM_BUTTONS)
+unsigned n3ds_buttons_held(void);
+
+// ==========================================================================
 // Options of the 3DS, saved in the game's configuration.
 
 extern int32_t n3ds_bottom_map;     // the map on the bottom screen
@@ -132,6 +156,7 @@ enum
     N3DS_RUN_HOLD,  // while the run button is held
     N3DS_RUN_ONCE,  // from a press until the player stops moving
     N3DS_RUN_STICK, // the Circle Pad fully pushed runs
+    N3DS_RUN_ALWAYS,// always, and the run button walks
     N3DS_NUM_RUN_MODES
 };
 

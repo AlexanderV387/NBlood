@@ -3224,6 +3224,9 @@ static int N3DS_Running(int const button, int32_t const dx, int32_t const dz)
             // The Circle Pad's tilt gives the speed, up to running.
             return button || analog;
 
+        case N3DS_RUN_ALWAYS:
+            return !button;
+
         default:
             return button;
     }
@@ -3319,7 +3322,9 @@ void P_GetInput(int const playerNum)
 
     // JBF: Run key behaviour is selectable
 #ifdef __3DS__
-    int const       playerRunning = ud.auto_run ^ N3DS_Running(BUTTON(gamefunc_Run), info.dx, info.dz);
+    // The run modes replace "Always run" (on by default, it made the run
+    // button walk).
+    int const       playerRunning = N3DS_Running(BUTTON(gamefunc_Run), info.dx, info.dz);
 #else
     int const       playerRunning = (ud.runkey_mode) ? (BUTTON(gamefunc_Run) | ud.auto_run) : (ud.auto_run ^ BUTTON(gamefunc_Run));
 #endif

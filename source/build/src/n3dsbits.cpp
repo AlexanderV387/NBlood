@@ -297,6 +297,21 @@ void n3ds_touch_drag(int *dx, int *dy)
     last_y = y;
 }
 
+char const *const n3ds_button_names[N3DS_NUM_BUTTONS] = { "A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT" };
+
+unsigned n3ds_buttons_held(void)
+{
+    static u32 const keys[N3DS_NUM_BUTTONS] = { KEY_A, KEY_B, KEY_X, KEY_Y, KEY_L, KEY_R, KEY_ZL, KEY_ZR, KEY_SELECT };
+    u32 const held = hidKeysHeld();
+    unsigned buttons = (held & KEY_START) ? N3DS_START_HELD : 0;
+
+    for (int i = 0; i < N3DS_NUM_BUTTONS; ++i)
+        if (held & keys[i])
+            buttons |= 1u << i;
+
+    return buttons;
+}
+
 void n3ds_post_key(int scancode, int down)
 {
     SDL_Event ev;

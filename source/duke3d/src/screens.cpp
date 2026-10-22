@@ -2666,12 +2666,15 @@ void G_BonusScreen(int32_t bonusonly)
 uint32_t g_n3dsInputBits;
 int32_t g_n3dsConfigVersion;
 
-static uint8_t n3ds_target[N3DS_BOTTOM_WIDTH * 200];
+// As tall as the bottom screen (the map alone takes most of it) or the
+// status bar's 320x200 space.
+static uint8_t n3ds_target[N3DS_BOTTOM_WIDTH * N3DS_BOTTOM_HEIGHT];
 
 // Draws with the engine into n3ds_target, N3DS_BOTTOM_WIDTH wide and
 // height rows (row by row: a tile's columns are the target's rows).
 template <typename Draw> static void N3DS_DrawToTarget(int height, Draw draw)
 {
+    height = min(height, N3DS_BOTTOM_HEIGHT);
     Bmemset(n3ds_target, 0, N3DS_BOTTOM_WIDTH * height);
     waloff[N3DS_TILE_TARGET] = (intptr_t) n3ds_target;
     renderSetTarget(N3DS_TILE_TARGET, height, N3DS_BOTTOM_WIDTH);

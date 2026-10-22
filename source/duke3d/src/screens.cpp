@@ -2722,13 +2722,16 @@ static void N3DS_DrawStatusBar(uint8_t *screen, int y, int rows)
 static void N3DS_DrawMap(uint8_t *screen, int y, int rows)
 {
     auto const p = g_player[screenpeek].ps;
+    N3DS_WHERE("bottom: map buttons");
     int const zoom = 512 * n3ds_update_map_buttons(y, rows) / 100;
     int const ang = fix16_to_int(p->q16ang);
 
     if (n3ds_bottom_map)
     {
         N3DS_DrawToTarget(rows, [&] {
+            N3DS_WHERE("bottom: map floors");
             renderDrawMapView(p->pos.x, p->pos.y, zoom, ang);
+            N3DS_WHERE("bottom: map lines");
             G_DrawOverheadMap(p->pos.x, p->pos.y, zoom, ang);
         });
 
@@ -2826,15 +2829,22 @@ static int N3DS_DrawBottom(uint8_t *screen)
     Bmemset(screen, 0, N3DS_BOTTOM_WIDTH * N3DS_BOTTOM_HEIGHT);
 
     if (bar)
+    {
+        N3DS_WHERE("bottom: status bar");
         N3DS_DrawStatusBar(screen, n3ds_status_below ? map_rows : 0, bar);
+    }
 
     N3DS_DrawMap(screen, map_y, map_rows);
 
     if (buttons)
     {
+        N3DS_WHERE("bottom: items");
         N3DS_DrawItems(screen, bar + map_rows);
+        N3DS_WHERE("bottom: weapons");
         N3DS_DrawWeapons(screen, bar + map_rows + N3DS_ITEM_ROW_HEIGHT);
     }
+
+    N3DS_WHERE("bottom: done");
 
     return 1;
 }

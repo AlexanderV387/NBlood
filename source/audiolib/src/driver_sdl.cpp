@@ -31,6 +31,10 @@
 #include "sdl_inc.h"
 #include "vfs.h"
 
+#ifdef __3DS__
+#include "n3dsbits.h"
+#endif
+
 #ifdef __ANDROID__
 #include "duke3d.h"
 #include "android.h"
@@ -69,6 +73,10 @@ char *SDLAudioDriverNameEnv;
 static void fillData(void * userdata, Uint8 * ptr, int remaining)
 {
     UNREFERENCED_PARAMETER(userdata);
+
+#ifdef __3DS__
+    ++n3ds_audio_mixes;
+#endif
 
     if (!MixBuffer || !MixCallBack)
       return;

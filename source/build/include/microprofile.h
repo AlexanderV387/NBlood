@@ -134,7 +134,13 @@ typedef uint16_t MicroProfileGroupId;
 #define MICROPROFILE_DEFINE_GPU(var, name, color)
 #define MICROPROFILE_SCOPE(var) do{}while(0)
 #define MICROPROFILE_SCOPE_TOKEN(token) do{}while(0)
+#ifdef __3DS__
+// Where the game's thread is, for the log when the frames stop (n3dsbits.h).
+#include "n3dsbits.h"
+#define MICROPROFILE_SCOPEI(group, name, color) do{ n3ds_where = (name); }while(0)
+#else
 #define MICROPROFILE_SCOPEI(group, name, color) do{}while(0)
+#endif
 #define MICROPROFILE_SCOPEGPU(var) do{}while(0)
 #define MICROPROFILE_SCOPEGPUI(name, color) do{}while(0)
 #define MICROPROFILE_META_CPU(name, count)

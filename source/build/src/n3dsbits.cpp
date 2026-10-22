@@ -733,6 +733,10 @@ static frame_t frame;
 static LightEvent frame_ready, frame_done;
 static Thread present_thread;
 static u64 compose_ticks;
+static volatile uint32_t frames_presented;
+
+const char *volatile n3ds_where = "start";
+volatile uint32_t n3ds_audio_mixes;
 
 // The top screen (400x240): the frame centered, its rows stretched or
 // squeezed to 240 if it has another height. The framebuffer is rotated:
@@ -825,11 +829,33 @@ static void ShowFrame(void)
     gspWaitForVBlank();
 }
 
+// No frame for a few seconds: where the game's thread is, in the log.
+static void LogStall(int seconds)
+{
+    static uint32_t last_mixes;
+    uint32_t const mixes = n3ds_audio_mixes;
+
+    LOG_F(WARNING, "3DS: no frame for %d s (frame %u): the game is at \"%s\"; audio mixed %u times since; ndsp resyncs %u",
+          seconds, (unsigned) frames_presented, n3ds_where, (unsigned) (mixes - last_mixes), (unsigned) ndspChnListResyncs);
+    last_mixes = mixes;
+}
+
 static void PresentThread(void *)
 {
+    LOG_F(INFO, "3DS: presenting on core %d", (int) svcGetProcessorID());
+
     for (;;)
     {
-        LightEvent_Wait(&frame_ready);
+        int waited = 0;
+
+        while (LightEvent_WaitTimeout(&frame_ready, 1000 * 1000 * 1000))
+        {
+            ++waited;
+            if (waited == 3 || (waited > 3 && waited % 10 == 0))
+                LogStall(waited);
+        }
+
+        ++frames_presented;
 
         // Closed from the HOME Menu: the screens are no longer ours.
         if (!n3ds_is_closing())
@@ -930,6 +956,7 @@ void n3ds_present(const uint8_t *buffer, int width, int height, const uint8_t *p
     // Wait until the previous frame is on its way to the screen.
     if (present_thread != NULL)
     {
+        N3DS_WHERE("present: waiting for the previous frame");
         LightEvent_Wait(&frame_done);
         LightEvent_Clear(&frame_done);
         CountFrame((int) ((work_end - work_start) / CPU_TICKS_PER_USEC), (int) (compose_ticks / CPU_TICKS_PER_USEC));
@@ -979,11 +1006,14 @@ void n3ds_present(const uint8_t *buffer, int width, int height, const uint8_t *p
 
     if (frame.bottom && !keyboard_open)
     {
+        N3DS_WHERE("present: bottom screen");
         showing = n3ds_draw_bottom != NULL && n3ds_draw_bottom(frame.bottom_screen);
         frame.bottom_showing = showing;
     }
 
+    N3DS_WHERE("present: backlight");
     UpdateBottomBacklight(showing);
+    N3DS_WHERE("present: done");
 
     if (present_thread != NULL)
         LightEvent_Signal(&frame_ready);

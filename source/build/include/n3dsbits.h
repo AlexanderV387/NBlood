@@ -36,6 +36,13 @@ int n3ds_fclose(FILE *file);
 // Counted by platform/3DS/ndsp/ndsp-channel.c.
 extern volatile uint32_t ndspChnListResyncs;
 
+// Where the game's thread last was, and how many times the audio was
+// mixed: logged by the thread that presents the frames when they stop
+// coming.
+extern const char *volatile n3ds_where;
+extern volatile uint32_t n3ds_audio_mixes;
+#define N3DS_WHERE(place) (n3ds_where = (place))
+
 // ==========================================================================
 // The screens. The 8-bit frame goes to the top screen (400x240), composed
 // on another core at the vertical blank; the bottom screen (320x240,

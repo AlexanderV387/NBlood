@@ -6483,8 +6483,10 @@ void drawframe_do(void)
         // only allow binds to function if the player is actually in a game (not in a menu, typing, et cetera) or demo
         CONTROL_BindsEnabled = !!(g_player[myconnectindex].ps->gm & (MODE_GAME | MODE_DEMO));
 
+        G_N3DS_WHERE("frame: keys");
         G_HandleLocalKeys();
         OSD_DispatchQueued();
+        G_N3DS_WHERE("frame: input");
         P_GetInput(myconnectindex);
     }
     else
@@ -6496,11 +6498,13 @@ void drawframe_do(void)
 
     int const smoothratio = calc_smoothratio(totalclock, ototalclock);
 
+    G_N3DS_WHERE("frame: rooms");
     G_DrawRooms(screenpeek, smoothratio);
 
     if (videoGetRenderMode() >= REND_POLYMOST)
         G_DrawBackground();
 
+    G_N3DS_WHERE("frame: display rest");
     G_DisplayRest(smoothratio);
 
     g_frameJustDrawn = true;
@@ -6508,8 +6512,11 @@ void drawframe_do(void)
     g_lastFrameDuration = g_lastFrameEndTime - g_lastFrameStartTime;
     g_frameCounter++;
 
+    G_N3DS_WHERE("frame: next page");
     videoNextPage();
+    G_N3DS_WHERE("frame: sounds");
     S_Update();
+    G_N3DS_WHERE("frame: done");
     g_lastFrameEndTime2 = timerGetNanoTicks();
     g_lastFrameDuration2 = g_lastFrameEndTime2 - g_lastFrameStartTime;
 }
@@ -7099,11 +7106,13 @@ MAIN_LOOP_RESTART:
 
     do //main loop
     {
+        G_N3DS_WHERE("loop: events");
         if (gameHandleEvents() && quitevent)
         {
             KB_KeyDown[sc_Escape] = 1;
             quitevent = 0;
         }
+        G_N3DS_WHERE("loop: tics");
 
         //if (g_restartFrameRoutine)
         //{
@@ -7155,6 +7164,7 @@ MAIN_LOOP_RESTART:
 
         g_gameUpdateAndDrawTime = g_gameUpdateTime + (double)g_lastFrameDuration * 1000.0 / (double)timerGetNanoTickRate();
 
+        G_N3DS_WHERE("loop: cheats");
         G_DoCheats();
 
         if (myplayer.gm & MODE_NEWGAME)
@@ -7290,6 +7300,8 @@ int G_DoMoveThings(void)
     if (g_netClient) // [75] The server should not overwrite its own randomseed
         randomseed = ticrandomseed;
 
+    G_N3DS_WHERE("tic: start");
+
     for (bssize_t TRAVERSE_CONNECT(i))
         Bmemcpy(&g_player[i].input, &inputfifo[(g_netServer && myconnectindex == i)][i], sizeof(input_t));
 
@@ -7339,17 +7351,22 @@ int G_DoMoveThings(void)
         if (sprite[g_player[i].ps->i].pal != 1)
             sprite[g_player[i].ps->i].pal = g_player[i].pcolor;
 
+        G_N3DS_WHERE("tic: shared keys");
         P_HandleSharedKeys(i);
 
         if (ud.pause_on == 0)
         {
+            G_N3DS_WHERE("tic: player");
             P_ProcessInput(i);
+            G_N3DS_WHERE("tic: player sectors");
             P_CheckSectors(i);
         }
     }
 
+    G_N3DS_WHERE("tic: world");
     if (ud.pause_on == 0)
         G_MoveWorld();
+    G_N3DS_WHERE("tic: end");
 
 //    Net_CorrectPrediction();
 

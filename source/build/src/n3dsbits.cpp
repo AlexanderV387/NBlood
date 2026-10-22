@@ -691,6 +691,19 @@ static void DrawKeyboard(uint8_t *screen, int pressed)
 
 // Taps on the keyboard, every frame (so none is missed). Returns the key
 // being pressed, or -1.
+// A key is held while touched, as on a PC keyboard: Duke's cheat codes
+// start when it sees D and N held, and a press and release sent together
+// were never seen held.
+static int held_key;  // its scancode, or 0
+
+static void ReleaseKey(void)
+{
+    if (held_key != 0)
+        n3ds_post_key(held_key, 0);
+
+    held_key = 0;
+}
+
 static int UpdateKeyboard(void)
 {
     static bool was_touching = false;
@@ -714,15 +727,18 @@ static int UpdateKeyboard(void)
                     keyboard_open = false;
                 else
                 {
-                    n3ds_post_key(vkeys[i].scancode, 1);
-                    n3ds_post_key(vkeys[i].scancode, 0);
+                    held_key = vkeys[i].scancode;
+                    n3ds_post_key(held_key, 1);
                 }
                 break;
             }
         }
     }
-    else if (!touching)
+    else if (!touching && was_touching)
+    {
+        ReleaseKey();
         pressed = -1;
+    }
 
     was_touching = touching;
     return pressed;
@@ -730,6 +746,9 @@ static int UpdateKeyboard(void)
 
 void n3ds_show_keyboard(int show)
 {
+    if (!show)
+        ReleaseKey();
+
     keyboard_open = show;
 }
 
@@ -930,9 +949,13 @@ static void LogStall(int seconds)
     last_mixes = mixes;
 }
 
-static void PresentThread(void *)
+extern "C" u32 __ctru_heap, __ctru_heap_size, __ctru_linear_heap, __ctru_linear_heap_size;
+
+static void PresentThread(void *arg)
 {
-    LOG_F(INFO, "3DS: presenting on core %d", (int) svcGetProcessorID());
+    LOG_F(INFO, "3DS: presenting on core %d; heap %08lx-%08lx, linear heap %08lx-%08lx, stack near %p", (int) svcGetProcessorID(),
+          (unsigned long) __ctru_heap, (unsigned long) (__ctru_heap + __ctru_heap_size),
+          (unsigned long) __ctru_linear_heap, (unsigned long) (__ctru_linear_heap + __ctru_linear_heap_size), (void *) &arg);
 
     for (;;)
     {

@@ -75,7 +75,9 @@ static void fillData(void * userdata, Uint8 * ptr, int remaining)
     UNREFERENCED_PARAMETER(userdata);
 
 #ifdef __3DS__
-    ++n3ds_audio_mixes;
+    // Where this thread's stack is (a crash on its core wrote outside it).
+    if (n3ds_audio_mixes++ == 0)
+        LOG_F(INFO, "3DS: audio thread stack near %p", (void *) &userdata);
 #endif
 
     if (!MixBuffer || !MixCallBack)

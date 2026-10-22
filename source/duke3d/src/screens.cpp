@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "input.h"
 #include "mdsprite.h"
 #include "microprofile.h"
+#include "osdcmds.h"
 #include "sbar.h"
 #include "screens.h"
 
@@ -2875,6 +2876,14 @@ void G_N3DS_Init(void)
     {
         ud.config.JoystickViewCentering = 0;
         g_n3dsConfigVersion = 3;
+    }
+
+    // The Cheats menu lists them all (on PC, those typed at least once:
+    // here typing them is slow).
+    if (g_n3dsConfigVersion < 4)
+    {
+        cl_cheatmask = ~0u;
+        g_n3dsConfigVersion = 4;
     }
 
     n3ds_draw_bottom = N3DS_DrawBottom;

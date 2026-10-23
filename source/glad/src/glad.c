@@ -75,6 +75,9 @@ static PFNWGLGETPROCADDRESSPROC_PRIVATE gladGetProcAddressPtr;
   #endif
 #endif
 
+/* [3DS] No libraries to open: OpenGL is linked in (pgl), and only
+   gladLoadGLLoader is used. */
+#ifndef __3DS__
 static
 int open_gl(void) {
 #ifndef IS_UWP
@@ -177,6 +180,7 @@ int gladLoadGL(void) {
 
     return status;
 }
+#endif
 
 struct gladGLversionStruct GLVersion = { 0, 0 };
 

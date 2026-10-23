@@ -63,6 +63,14 @@ extern volatile uint32_t n3ds_audio_mixes;
 // palette: 256 entries of r, g, b, (unused), as the engine's palette_t.
 void n3ds_present(const uint8_t *frame, int width, int height, const uint8_t *palette);
 
+// GPU mode (OpenGL on pgl): the GPU shows the top screen; this shows the
+// bottom one, after each pglSwapBuffers. work_us and gpu_us (pglFrameTimes)
+// go to the frame counter.
+void n3ds_present_bottom(const uint8_t *palette, int work_us, int gpu_us);
+
+// Before the GPU takes the top screen: the other core is done with it.
+void n3ds_release_top(void);
+
 // Set by the game: draws the bottom screen (from the game's thread);
 // returns whether it shows anything (otherwise black, and a tap turns
 // the backlight off).

@@ -23,6 +23,20 @@ mkdir -p "$PREFIX/lib" "$WORK"
 rm -f "$PREFIX/lib/libndspfix.a"
 "$DEVKITARM/bin/arm-none-eabi-ar" rcs "$PREFIX/lib/libndspfix.a" "$WORK/ndsp-channel.o"
 
+# pgl (platform/3DS/pgl): OpenGL on citro3d, for the GPU renderer
+# (Polymost without shaders); its vertex shader assembled by picasso and
+# built in. Its messages go to the game's log (pgl_log, n3dsbits.cpp).
+"$DEVKITPRO/tools/bin/picasso" -o "$WORK/pgl_shader.shbin" "$PWD/platform/3DS/pgl/pgl.v.pica"
+(cd "$WORK" && "$DEVKITPRO/tools/bin/bin2s" -a 4 -H pgl_shader_shbin.h pgl_shader.shbin > pgl_shader_shbin.s)
+"$DEVKITARM/bin/arm-none-eabi-gcc" -c "$WORK/pgl_shader_shbin.s" -o "$WORK/pgl_shader_shbin.o"
+"$DEVKITARM/bin/arm-none-eabi-gcc" -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft \
+    -O2 -D__3DS__ -Dprintf=pgl_log -I"$DEVKITPRO/libctru/include" -I"$PWD/platform/3DS/pgl/include" -I"$PWD/source/glad/include" -I"$WORK" \
+    -c "$PWD/platform/3DS/pgl/pgl.c" -o "$WORK/pgl.o"
+rm -f "$PREFIX/lib/libpgl.a"
+"$DEVKITARM/bin/arm-none-eabi-ar" rcs "$PREFIX/lib/libpgl.a" "$WORK/pgl.o" "$WORK/pgl_shader_shbin.o"
+mkdir -p "$PREFIX/include/pgl"
+cp "$PWD/platform/3DS/pgl/pgl.h" "$PREFIX/include/pgl/pgl.h"
+
 [ -f "$PREFIX/lib/libSDL2.a" ] && { echo "deps-3ds: already built"; exit 0; }
 
 mkdir -p "$WORK"

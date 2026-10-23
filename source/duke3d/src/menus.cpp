@@ -812,10 +812,21 @@ static MenuOption_t MEO_N3DS_CENTERING = MAKE_MENUOPTION( &MF_Redfont, &MEOS_N3D
 static MenuEntry_t ME_N3DS_CENTERING = MAKE_MENUENTRY( "View centering:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_CENTERING, Option );
 static MenuOption_t MEO_N3DS_TILTING = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &ud.screen_tilting );
 static MenuEntry_t ME_N3DS_TILTING = MAKE_MENUENTRY( "View tilting:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_TILTING, Option );
+#ifdef USE_OPENGL
+// Software (8-bit, the classic renderer) or the GPU (32-bit, Polymost on pgl).
+static char const *MEOSN_N3DS_RENDERER[] = { "Software", "GPU" };
+static int32_t MEOSV_N3DS_RENDERER[] = { 8, 32 };
+static MenuOptionSet_t MEOS_N3DS_RENDERER = MAKE_MENUOPTIONSET( MEOSN_N3DS_RENDERER, MEOSV_N3DS_RENDERER, 0x3 );
+static MenuOption_t MEO_N3DS_RENDERER = MAKE_MENUOPTION( &MF_Redfont, &MEOS_N3DS_RENDERER, &ud.setup.bpp );
+static MenuEntry_t ME_N3DS_RENDERER = MAKE_MENUENTRY( "Renderer:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_RENDERER, Option );
+#endif
 static MenuOption_t MEO_N3DS_FPS = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_show_fps );
 static MenuEntry_t ME_N3DS_FPS = MAKE_MENUENTRY( "FPS counter:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_FPS, Option );
 
 static MenuEntry_t *MEL_N3DS[] = {
+#ifdef USE_OPENGL
+    &ME_N3DS_RENDERER,
+#endif
     &ME_N3DS_MAP,
     &ME_N3DS_STATUSBAR,
     &ME_N3DS_CLASSICHUD,
@@ -4386,6 +4397,20 @@ static int32_t Menu_EntryOptionModify(MenuEntry_t *entry, int32_t newOption)
     }
     else if (entry == &ME_SCREENSETUP_SCREENSIZE)
         G_SetViewportShrink((newOption - vpsize) * 4);
+#if defined __3DS__ && defined USE_OPENGL
+    else if (entry == &ME_N3DS_RENDERER)
+    {
+        // Without the GPU, the mode stays in software: the option too.
+        if (videoSetGameMode(fullscreen, xres, yres, newOption, ud.detail) < 0 || bpp != newOption)
+        {
+            ud.setup.bpp = bpp;
+            return -1;
+        }
+
+        onvideomodechange(newOption > 8);
+        G_UpdateScreenArea();
+    }
+#endif
     else if (entry == &ME_SOUND)
     {
         if (newOption == 0)

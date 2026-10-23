@@ -400,8 +400,9 @@ else ifeq ($(PLATFORM),WII)
     override HAVE_FLAC := 0
     SDL_TARGET := 1
 else ifeq ($(PLATFORM),3DS)
-    # Software renderer first; Polymost comes later over a GL layer.
-    override USE_OPENGL := 0
+    # OpenGL is pgl's (platform/3DS/pgl): Polymost without shaders, on the GPU.
+    override POLYMER := 0
+    override USE_LIBVPX := 0
     override NETCODE := 0
     override HAVE_GTK2 := 0
     override HAVE_FLAC := 0
@@ -1033,6 +1034,9 @@ ifeq ($(PLATFORM),WINDOWS)
 else ifeq ($(PLATFORM),WII)
     LIBS += -laesnd_tueidj -lfat -lwiiuse -lbte -lwiikeyboard -logc
 else ifeq ($(PLATFORM),3DS)
+    ifneq (0,$(USE_OPENGL))
+        LIBS += -lpgl -lcitro3d
+    endif
     LIBS += -lndspfix -lctru
 else ifeq ($(SUBPLATFORM),LINUX)
     LIBS += -lrt -latomic

@@ -164,6 +164,9 @@ ifneq ($(RENDERTYPE),WIN)
 endif
 ifeq (0,$(USE_OPENGL))
     imgui_excl += imgui_impl_opengl3.cpp
+else ifeq ($(PLATFORM),3DS)
+    # pgl has no shaders for ImGui's renderer.
+    imgui_excl += imgui_impl_opengl3.cpp
 endif
 
 imgui_objs := $(call getfiltered,imgui,*.cpp)

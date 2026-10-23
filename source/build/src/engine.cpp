@@ -11995,7 +11995,7 @@ static void PolymostFreeVBOs(void)
 extern char videomodereset;
 int32_t videoSetGameMode(char davidoption, int32_t daupscaledxdim, int32_t daupscaledydim, int32_t dabpp, int32_t daupscalefactor)
 {
-#ifdef USE_OPENGL
+#if defined USE_OPENGL && !defined __3DS__  // (on the 3DS, nogl is the current mode's)
     if (nogl) dabpp = 8;
 #endif
 #ifdef __3DS__

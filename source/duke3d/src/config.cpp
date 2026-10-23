@@ -264,7 +264,7 @@ void CONFIG_SetDefaults(void)
     }
 #endif
 
-#ifdef USE_OPENGL
+#if defined USE_OPENGL && !defined __3DS__  // (the 3DS: software first, the GPU an option)
     ud.setup.bpp = 32;
 #else
     ud.setup.bpp = 8;

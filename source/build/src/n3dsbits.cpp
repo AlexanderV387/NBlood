@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <malloc.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -831,6 +832,7 @@ static void DrawFrameCounter(u32 *framebuffer)
 
 struct frame_t
 {
+    bool has_top;           // otherwise the GPU shows the top screen
     uint8_t top[TOP_WIDTH * TOP_HEIGHT];
     int width, height;
     u32 colors[256];        // palette in the framebuffer format (RGBA8)
@@ -930,13 +932,17 @@ static void ShowFrame(void)
 {
     u64 const start = svcGetSystemTick();
 
-    ComposeTop(&frame);
+    if (frame.has_top)
+        ComposeTop(&frame);
 
     if (frame.bottom)
         ComposeBottom(&frame);
 
     compose_ticks = svcGetSystemTick() - start;
-    gspWaitForVBlank();
+
+    // In GPU mode citro3d waits for it.
+    if (frame.has_top)
+        gspWaitForVBlank();
 }
 
 // No frame for a few seconds: where the game's thread is, in the log.
@@ -1100,7 +1106,10 @@ static int Nearest(const uint8_t *palette, int r, int g, int b)
     return best;
 }
 
-void n3ds_present(const uint8_t *buffer, int width, int height, const uint8_t *palette)
+// Hands a frame to the other core: the top screen's (buffer, unless NULL:
+// the GPU shows it) and every other one the bottom screen's. work_us and
+// gpu_us, when the GPU drew: for the frame counter.
+static void Present(const uint8_t *buffer, int width, int height, const uint8_t *palette, int work_us, int gpu_us)
 {
     static bool started;
     static int bottom_frames;
@@ -1135,6 +1144,7 @@ void n3ds_present(const uint8_t *buffer, int width, int height, const uint8_t *p
     }
 
     u64 const work_end = svcGetSystemTick();
+    bool const gpu = buffer == NULL;
 
     // Wait until the previous frame is on its way to the screen.
     if (present_thread != NULL)
@@ -1142,16 +1152,26 @@ void n3ds_present(const uint8_t *buffer, int width, int height, const uint8_t *p
         N3DS_WHERE("present: waiting for the previous frame");
         LightEvent_Wait(&frame_done);
         LightEvent_Clear(&frame_done);
-        CountFrame((int) ((work_end - work_start) / CPU_TICKS_PER_USEC), (int) (compose_ticks / CPU_TICKS_PER_USEC));
+
+        if (gpu)
+            CountFrame(work_us, gpu_us);
+        else
+            CountFrame((int) ((work_end - work_start) / CPU_TICKS_PER_USEC), (int) (compose_ticks / CPU_TICKS_PER_USEC));
+
         work_start = svcGetSystemTick();
     }
 
     // The other thread is idle: the frame is free to fill.
-    width = min(width, TOP_WIDTH);
-    height = min(height, TOP_HEIGHT);
-    Bmemcpy(frame.top, buffer, width * height);
-    frame.width = width;
-    frame.height = height;
+    frame.has_top = !gpu;
+
+    if (!gpu)
+    {
+        width = min(width, TOP_WIDTH);
+        height = min(height, TOP_HEIGHT);
+        Bmemcpy(frame.top, buffer, width * height);
+        frame.width = width;
+        frame.height = height;
+    }
 
     if (Bmemcmp(last_palette, palette, sizeof(last_palette)))
     {
@@ -1202,9 +1222,52 @@ void n3ds_present(const uint8_t *buffer, int width, int height, const uint8_t *p
         LightEvent_Signal(&frame_ready);
     else
     {
-        ShowFrame();
-        CountFrame((int) ((work_end - work_start + compose_ticks) / CPU_TICKS_PER_USEC),
-                   (int) (compose_ticks / CPU_TICKS_PER_USEC));
+        if (!gpu || frame.bottom)
+            ShowFrame();
+
+        if (gpu)
+            CountFrame(work_us, gpu_us);
+        else
+            CountFrame((int) ((work_end - work_start + compose_ticks) / CPU_TICKS_PER_USEC),
+                       (int) (compose_ticks / CPU_TICKS_PER_USEC));
+
         work_start = svcGetSystemTick();
     }
+}
+
+void n3ds_present(const uint8_t *buffer, int width, int height, const uint8_t *palette)
+{
+    Present(buffer, width, height, palette, 0, 0);
+}
+
+void n3ds_present_bottom(const uint8_t *palette, int work_us, int gpu_us)
+{
+    Present(NULL, 0, 0, palette, work_us, gpu_us);
+}
+
+void n3ds_release_top(void)
+{
+    if (present_thread != NULL)
+    {
+        LightEvent_Wait(&frame_done);
+        frame.has_top = false;
+    }
+}
+
+// pgl's messages (printf in pgl.c), in the log.
+extern "C" int pgl_log(const char *format, ...)
+{
+    char text[256];
+    va_list args;
+
+    va_start(args, format);
+    int const length = vsnprintf(text, sizeof(text), format, args);
+    va_end(args);
+
+    size_t end = strlen(text);
+    while (end > 0 && text[end - 1] == '\n')
+        text[--end] = '\0';
+
+    LOG_F(INFO, "%s", text);
+    return length;
 }

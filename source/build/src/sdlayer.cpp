@@ -18,8 +18,9 @@
 #if SDL_MAJOR_VERSION >= 2
 # include "imgui.h"
 # include "imgui_impl_sdl2.h"
-#ifdef USE_OPENGL
+#if defined USE_OPENGL && !defined __3DS__
 # include "imgui_impl_opengl3.h"
+# define IMGUI_OPENGL
 #endif
 #endif
 
@@ -27,6 +28,47 @@
 # include "glad/glad.h"
 # include "glbuild.h"
 # include "glsurface.h"
+#endif
+
+#if defined __3DS__ && defined USE_OPENGL
+// OpenGL is pgl's (platform/3DS/pgl, on citro3d), not SDL's: the GPU draws
+// the top screen, n3dsbits the bottom one. nogl says whether the current
+// mode draws in software (8-bit), which never goes through OpenGL; the GPU
+// modes (32-bit) are always offered.
+extern "C" {
+# include "pgl/pgl.h"
+}
+# include "n3dsbits.h"
+
+static SDL_GLContext n3ds_gl_open(void)
+{
+    n3ds_release_top();
+    return pglCreateContext() ? (SDL_GLContext) 1 : nullptr;
+}
+
+static void n3ds_gl_swap(void)
+{
+    int work_us, gpu_us;
+
+    pglSwapBuffers();
+    pglFrameTimes(&work_us, &gpu_us);
+    n3ds_present_bottom((const uint8_t *) curpalettefaded, work_us, gpu_us);
+}
+
+# define SDL_GL_CreateContext(window) n3ds_gl_open()
+# define SDL_GL_DeleteContext(context) pglDeleteContext()
+# define SDL_GL_SwapWindow(window) n3ds_gl_swap()
+# define SDL_GL_GetProcAddress pglGetProcAddress
+# define SDL_GL_SetSwapInterval(interval) 0
+# define SDL_GL_GetSwapInterval() 1
+# define SDL_GL_SetAttribute(attribute, value) 0
+# define SDL_GL_LoadLibrary(path) 0
+# define SDL_GL_UnloadLibrary() ((void) 0)
+# undef SDL_WINDOW_OPENGL
+# define SDL_WINDOW_OPENGL 0
+# define GL_OFFERED 1
+#else
+# define GL_OFFERED (!nogl)
 #endif
 
 #if defined HAVE_GTK2
@@ -1450,7 +1492,7 @@ void videoGetModes(int display)
         // HACK: 8-bit == Software, 32-bit == OpenGL
         SDL_ADDMODE(dispmode.w, dispmode.h, 8, 1);
 #ifdef USE_OPENGL
-        if (!nogl)
+        if (GL_OFFERED)
             SDL_ADDMODE(dispmode.w, dispmode.h, 32, 1);
 #endif
         if ((dispmode.w > maxx) || (dispmode.h > maxy))
@@ -1478,7 +1520,7 @@ void videoGetModes(int display)
         SDL_ADDMODE(mode.x, mode.y, 8, 0);
 
 #ifdef USE_OPENGL
-        if (nogl)
+        if (!GL_OFFERED)
             continue;
 
         SDL_ADDMODE(mode.x, mode.y, 32, 0);
@@ -1502,7 +1544,7 @@ int32_t videoCheckMode(int32_t *x, int32_t *y, int32_t c, int32_t fs, int32_t fo
 
     if (c>8
 #ifdef USE_OPENGL
-            && nogl
+            && !GL_OFFERED
 #endif
        ) return -1;
 
@@ -1570,7 +1612,7 @@ static void destroy_window_resources()
 #if SDL_MAJOR_VERSION >= 2
     if (g_ImGui_IO)
     {
-#ifdef USE_OPENGL
+#ifdef IMGUI_OPENGL
         ImGui_ImplOpenGL3_Shutdown();
 #endif
         ImGui_ImplSDL2_Shutdown();
@@ -1593,7 +1635,7 @@ void engineBeginImGuiFrame(void)
 {
     Bassert(g_ImGuiFrameActive == false);
 #if SDL_MAJOR_VERSION >= 2
-#ifdef USE_OPENGL
+#ifdef IMGUI_OPENGL
     ImGui_ImplOpenGL3_NewFrame();
 #endif
     ImGui_ImplSDL2_NewFrame();
@@ -1636,7 +1678,7 @@ void engineSetupImGui(void)
 
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
-#ifdef USE_OPENGL
+#ifdef IMGUI_OPENGL
     ImGui_ImplSDL2_InitForOpenGL(sdl_window, sdl_context);
     ImGui_ImplOpenGL3_Init();
 #endif
@@ -1872,6 +1914,20 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
 
     VLOG_F(LOG_GFX, "Setting video mode %dx%d (%d-bpp %s).", x, y, c, ((fs & 1) ? "fullscreen" : "windowed"));
 
+#if defined __3DS__ && defined USE_OPENGL
+    // Between software and the GPU: a new window, with or without pgl.
+    if (sdl_window && (c > 8) == (bool) nogl)
+    {
+        if (!nogl)
+            polymost_glreset();  // its textures, while pgl is there
+
+        destroy_window_resources();
+        sdl_surface = NULL;
+    }
+
+    nogl = c <= 8;
+#endif
+
     if (sdl_window)
         return setvideomode_sdlcommonpost(x, y, c, fs, regrab);
 
@@ -1943,14 +1999,21 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
         if (nogl)
         {
             destroy_window_resources();
+#ifdef __3DS__
+            // No GPU: software.
+            return videoSetMode(x, y, 8, fs);
+#else
             // If c == 8, retry without hardware accelaration
             return videoSetMode(x, y, c, fs);
+#endif
         }
 
         SDL_GL_SetSwapInterval(sdlayer_getswapinterval(vsync_renderlayer));
         vsync_renderlayer = sdlayer_checkvsync(vsync_renderlayer);
 
+#ifndef __3DS__
         engineSetupImGui();
+#endif
     }
     else
 #endif  // defined USE_OPENGL
@@ -2131,7 +2194,9 @@ void videoShowFrame(int32_t w)
         if (g_ImGuiFrameActive)
         {
             ImGui::Render();
+#ifdef IMGUI_OPENGL
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+#endif
             g_ImGuiFrameActive = false;
         }
 #endif

@@ -1014,6 +1014,12 @@ void polymost_glinit()
     r_npotwallmode = 0;
     r_persistentStreamBuffer = 0;
 #endif
+#ifdef __3DS__
+    // No texture cache on the SD card (slow; and it wants mipmaps, which
+    // pgl does not use), nor compressed textures.
+    glusetexcache = glusememcache = 0;
+    glusetexcompr = 0;
+#endif
 
     glHint(GL_FOG_HINT, GL_NICEST);
     glFogi(GL_FOG_MODE, (r_usenewshading < 2) ? GL_EXP2 : GL_LINEAR);
@@ -1271,11 +1277,13 @@ void polymost_glinit()
     polymost_resetState();
 
     texcache_init();
+#ifndef __3DS__  // (no texture cache files on the SD card)
     texcache_openfiles();
     texcache_loadoffsets();
 
     texcache_setupmemcache();
     texcache_checkgarbage();
+#endif
 
     polymost_clearOrnamentSprites();
 

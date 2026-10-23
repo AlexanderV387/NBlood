@@ -1816,7 +1816,10 @@ namespace loguru
 
 	using ECPtr = EcEntryBase*;
 
-#if defined(_WIN32) || (defined(__APPLE__) && !TARGET_OS_IPHONE)
+// The 3DS: its pthread keys do not keep what is set, and the code below
+// allocated a new head with each error context (each actor, each game
+// tic) until the memory ran out after ten minutes. thread_local works.
+#if defined(_WIN32) || (defined(__APPLE__) && !TARGET_OS_IPHONE) || defined(__3DS__)
 	#ifdef __APPLE__
 		#define LOGURU_THREAD_LOCAL __thread
 	#else

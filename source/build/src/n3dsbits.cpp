@@ -11,6 +11,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <malloc.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -1115,6 +1116,22 @@ void n3ds_present(const uint8_t *buffer, int width, int height, const uint8_t *p
     {
         StartPresenting();
         started = true;
+
+        // Whether a pthread key keeps what is set (loguru relied on it).
+        pthread_key_t key;
+        int const created = pthread_key_create(&key, NULL);
+        int const set = created == 0 ? pthread_setspecific(key, &started) : -1;
+        LOG_F(INFO, "3DS: pthread keys: create %d, set %d, kept %d", created, set,
+              created == 0 && pthread_getspecific(key) == &started);
+    }
+
+    // The memory in use, once a minute (it ran out after ten minutes once).
+    static unsigned frames;
+
+    if (++frames % 3600 == 0)
+    {
+        struct mallinfo const info = mallinfo();
+        LOG_F(INFO, "3DS: memory in use %d KB, free in the heap %d KB", info.uordblks >> 10, info.fordblks >> 10);
     }
 
     u64 const work_end = svcGetSystemTick();

@@ -2013,6 +2013,61 @@ int gladLoadGLLoader(GLADloadproc load) {
 	load_GL_KHR_debug(load);
 	load_GL_KHR_robustness(load);
 	load_GL_SGIS_fog_function(load);
+#ifdef __3DS__
+	/* [3DS] pgl has every function the engine calls, if only as a stub:
+	   all loaded, also those of what it does not report (otherwise NULL,
+	   and called anyway), the flags left as reported. */
+	{
+		int const reported[] = { GLAD_GL_VERSION_3_0, GLAD_GL_ARB_buffer_storage, GLAD_GL_ARB_clip_control, GLAD_GL_ARB_debug_output, GLAD_GL_ARB_map_buffer_range, GLAD_GL_ARB_robustness, GLAD_GL_ARB_sampler_objects, GLAD_GL_ARB_sync, GLAD_GL_ARB_timer_query, GLAD_GL_ARB_vertex_array_object, GLAD_GL_EXT_fog_coord, GLAD_GL_EXT_framebuffer_object, GLAD_GL_KHR_debug, GLAD_GL_KHR_robustness, GLAD_GL_SGIS_fog_function };
+		int k;
+		GLAD_GL_VERSION_3_0 = 1;
+		GLAD_GL_ARB_buffer_storage = 1;
+		GLAD_GL_ARB_clip_control = 1;
+		GLAD_GL_ARB_debug_output = 1;
+		GLAD_GL_ARB_map_buffer_range = 1;
+		GLAD_GL_ARB_robustness = 1;
+		GLAD_GL_ARB_sampler_objects = 1;
+		GLAD_GL_ARB_sync = 1;
+		GLAD_GL_ARB_timer_query = 1;
+		GLAD_GL_ARB_vertex_array_object = 1;
+		GLAD_GL_EXT_fog_coord = 1;
+		GLAD_GL_EXT_framebuffer_object = 1;
+		GLAD_GL_KHR_debug = 1;
+		GLAD_GL_KHR_robustness = 1;
+		GLAD_GL_SGIS_fog_function = 1;
+		load_GL_VERSION_3_0(load);
+		load_GL_ARB_buffer_storage(load);
+		load_GL_ARB_clip_control(load);
+		load_GL_ARB_debug_output(load);
+		load_GL_ARB_map_buffer_range(load);
+		load_GL_ARB_robustness(load);
+		load_GL_ARB_sampler_objects(load);
+		load_GL_ARB_sync(load);
+		load_GL_ARB_timer_query(load);
+		load_GL_ARB_vertex_array_object(load);
+		load_GL_EXT_fog_coord(load);
+		load_GL_EXT_framebuffer_object(load);
+		load_GL_KHR_debug(load);
+		load_GL_KHR_robustness(load);
+		load_GL_SGIS_fog_function(load);
+		k = 0;
+		GLAD_GL_VERSION_3_0 = reported[k++];
+		GLAD_GL_ARB_buffer_storage = reported[k++];
+		GLAD_GL_ARB_clip_control = reported[k++];
+		GLAD_GL_ARB_debug_output = reported[k++];
+		GLAD_GL_ARB_map_buffer_range = reported[k++];
+		GLAD_GL_ARB_robustness = reported[k++];
+		GLAD_GL_ARB_sampler_objects = reported[k++];
+		GLAD_GL_ARB_sync = reported[k++];
+		GLAD_GL_ARB_timer_query = reported[k++];
+		GLAD_GL_ARB_vertex_array_object = reported[k++];
+		GLAD_GL_EXT_fog_coord = reported[k++];
+		GLAD_GL_EXT_framebuffer_object = reported[k++];
+		GLAD_GL_KHR_debug = reported[k++];
+		GLAD_GL_KHR_robustness = reported[k++];
+		GLAD_GL_SGIS_fog_function = reported[k++];
+	}
+#endif
 	return GLVersion.major != 0 || GLVersion.minor != 0;
 }
 

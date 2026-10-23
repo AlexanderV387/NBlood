@@ -3,6 +3,13 @@
 
 #ifdef USE_OPENGL
 
+// Polymost without shaders, as OpenGL 1.x drew it: textures with their own
+// colors, the shade as the vertices' color, the visibility as OpenGL's fog.
+// For GPUs without them: the 3DS's (on pgl, OpenGL 1.3 over citro3d).
+#if defined __3DS__ && !defined POLYMOST_FIXED_FUNCTION
+# define POLYMOST_FIXED_FUNCTION
+#endif
+
 #include "baselayer.h"  // glinfo
 #include "glad/glad.h"
 #include "hightile.h"

@@ -588,6 +588,33 @@ void polymost_resetVertexPointers()
 #endif
 }
 
+#ifdef POLYMOST_FIXED_FUNCTION
+// The shaders' rotation (u_rotMatrix) as the modelview matrix, which is
+// otherwise the identity in the 3D view.
+static void polymost_fixedRotMatrix(void)
+{
+    glMatrixMode(GL_MODELVIEW);
+    glLoadMatrixf(polymost1RotMatrix);
+}
+
+// The states the shaders' uniforms stood for.
+static void polymost_fixedState(void)
+{
+    buildgl_useShaderProgram(0);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+    if (polymost1FogEnabled && !nofog)
+        buildgl_setEnabled(GL_FOG);
+    else
+        buildgl_setDisabled(GL_FOG);
+
+    if (polymost1UseColorOnly)
+        buildgl_setDisabled(GL_TEXTURE_2D);
+    else
+        buildgl_setEnabled(GL_TEXTURE_2D);
+}
+#endif
+
 void polymost_resetState()
 {
     buildgl_outputDebugMessage(3, "polymost_resetState()");
@@ -612,6 +639,11 @@ void polymost_resetProgram()
         return;
 
     buildgl_outputDebugMessage(3, "polymost_resetProgram()");
+
+#ifdef POLYMOST_FIXED_FUNCTION
+    polymost_fixedState();
+    return;
+#endif
 
 #ifdef POLYMOST2
     if (r_enablepolymost2)
@@ -798,6 +830,13 @@ void polymost_setVisibility(float visibility)
 
 void polymost_setFogEnabled(char fogEnabled)
 {
+#ifdef POLYMOST_FIXED_FUNCTION
+    polymost1FogEnabled = fogEnabled;
+    buildgl_setEnabled(GL_FOG);
+    if (!fogEnabled)
+        buildgl_setDisabled(GL_FOG);
+    return;
+#endif
     if (gl.currentShaderProgramID != polymost1CurrentShaderProgramID || fogEnabled == polymost1FogEnabled)
         return;
 
@@ -807,6 +846,14 @@ void polymost_setFogEnabled(char fogEnabled)
 
 void polymost_useColorOnly(char useColorOnly)
 {
+#ifdef POLYMOST_FIXED_FUNCTION
+    polymost1UseColorOnly = useColorOnly;
+    if (useColorOnly)
+        buildgl_setDisabled(GL_TEXTURE_2D);
+    else
+        buildgl_setEnabled(GL_TEXTURE_2D);
+    return;
+#endif
     if (gl.currentShaderProgramID != polymost1CurrentShaderProgramID || useColorOnly == polymost1UseColorOnly)
         return;
 
@@ -959,6 +1006,15 @@ void polymost_glinit()
 {
     buildgl_resetStateAccounting();
 
+#ifdef POLYMOST_FIXED_FUNCTION
+    // What only the shaders did: palette indices looked up per pixel, the
+    // shade tables, emulated NPOT walls, persistent buffers.
+    r_useindexedcolortextures = 0;
+    r_usetileshades = 0;
+    r_npotwallmode = 0;
+    r_persistentStreamBuffer = 0;
+#endif
+
     glHint(GL_FOG_HINT, GL_NICEST);
     glFogi(GL_FOG_MODE, (r_usenewshading < 2) ? GL_EXP2 : GL_LINEAR);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -974,6 +1030,7 @@ void polymost_glinit()
 
     polymost_initdrawpoly();
 
+#ifndef POLYMOST_FIXED_FUNCTION
     //POGOTODO: require a max texture size >= 2048
     tilesheetSize = glinfo.maxTextureSize;
 
@@ -1021,6 +1078,9 @@ void polymost_glinit()
     tilepacker_getTile(0, &blankTile);
     buildgl_bindTexture(GL_TEXTURE_2D, tilesheetTexIDs[blankTile.tilesheetID]);
     uploadtextureindexed(false, {(int32_t) blankTile.rect.u, (int32_t) blankTile.rect.v}, {2, 2}, (intptr_t) blankTex);
+#else
+    buildgl_resetSamplerObjects();
+#endif
 
     if (!glIsBuffer(quadVertsID))
         glGenBuffers(1, &quadVertsID);
@@ -1122,6 +1182,7 @@ void polymost_glinit()
     fogColorLoc = glGetUniformLocation(polymost2BasicShaderProgramID, "u_fogColor");
 #endif // POLYMOST2
 
+#ifndef POLYMOST_FIXED_FUNCTION
     GLuint polymost1BasicVertexShaderID = 0;
     GLuint polymost1ExtendedFragmentShaderID = 0;
     GLuint polymost1BasicFragmentShaderID = 0;
@@ -1198,6 +1259,11 @@ void polymost_glinit()
 
     for (int palookupnum = 0; palookupnum < MAXPALOOKUPS; ++palookupnum)
         uploadpalswap(palookupnum);
+#else
+    // The fixed function: texture times color, and the fog.
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glFogi(GL_FOG_MODE, GL_LINEAR);
+#endif
 
     glEnableClientState(GL_VERTEX_ARRAY);
     glEnableClientState(GL_TEXTURE_COORD_ARRAY);
@@ -1325,6 +1391,18 @@ void polymost2_calc_fog(int32_t shade, int32_t vis, int32_t pal)
 }
 #endif // POLYMOST2
 
+static void polymost_fogColor(void)
+{
+#ifdef POLYMOST_FIXED_FUNCTION
+    // The shaders mixed in only red, green and blue: with the fog tables'
+    // alpha of 0, the fixed function made what it fogged see-through.
+    GLfloat const color[4] = { fogcol.r, fogcol.g, fogcol.b, 1.f };
+    glFogfv(GL_FOG_COLOR, color);
+#else
+    glFogfv(GL_FOG_COLOR, (GLfloat *)&fogcol);
+#endif
+}
+
 void calc_and_apply_fog(int32_t shade, int32_t vis, int32_t pal)
 {
     if (nofog) return;
@@ -1352,13 +1430,13 @@ void calc_and_apply_fog(int32_t shade, int32_t vis, int32_t pal)
 
         glFogf(GL_FOG_START, fogresult);
         glFogf(GL_FOG_END, fogresult2);
-        glFogfv(GL_FOG_COLOR, (GLfloat *)&fogcol);
+        polymost_fogColor();
 
         return;
     }
 
     fogcalc(shade, vis, pal);
-    glFogfv(GL_FOG_COLOR, (GLfloat *)&fogcol);
+    polymost_fogColor();
 
     if (r_usenewshading < 2)
         glFogf(GL_FOG_DENSITY, fogresult);
@@ -1399,7 +1477,7 @@ void calc_and_apply_fog_factor(int32_t shade, int32_t vis, int32_t pal, float fa
 
         glFogf(GL_FOG_START, fogresult);
         glFogf(GL_FOG_END, fogresult2);
-        glFogfv(GL_FOG_COLOR, (GLfloat *)&fogcol);
+        polymost_fogColor();
 
         return;
     }
@@ -1410,7 +1488,7 @@ void calc_and_apply_fog_factor(int32_t shade, int32_t vis, int32_t pal, float fa
     fogresult *= fogfactor[pal];
     fogresult2 *= fogfactor[pal];
 
-    glFogfv(GL_FOG_COLOR, (GLfloat *)&fogcol);
+    polymost_fogColor();
 
     if (r_usenewshading < 2)
         glFogf(GL_FOG_DENSITY, fogresult*factor);
@@ -1499,6 +1577,9 @@ static void resizeglcheck(void)
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
+#ifdef POLYMOST_FIXED_FUNCTION
+    polymost_fixedRotMatrix();
+#endif
 
     if (!nofog) polymost_setFogEnabled(true);
 }
@@ -1967,6 +2048,10 @@ void uploadbasepalette(int32_t basepalnum)
 
 void uploadpalswap(int32_t palookupnum)
 {
+#ifdef POLYMOST_FIXED_FUNCTION
+    UNREFERENCED_PARAMETER(palookupnum);
+    return;
+#endif
     if (!polymost1BasicShaderProgramID)
     {
         //POGO: if we haven't initialized properly yet, we shouldn't be uploading palette swap tables
@@ -3022,6 +3107,10 @@ void polymost_updatePalette()
     if (videoGetRenderMode() != REND_POLYMOST)
         return;
 
+#ifdef POLYMOST_FIXED_FUNCTION
+    return;  // the textures have their colors
+#endif
+
     polymost_setPalswap(globalpal);
     polymost_setShade(globalshade);
 
@@ -3094,7 +3183,11 @@ static void polymost_waitForSubBuffer(uint32_t subBufferIndex)
 
 static void polymost_updaterotmat(void)
 {
+#ifdef POLYMOST_FIXED_FUNCTION
+    if (videoGetRenderMode() == REND_POLYMOST)
+#else
     if (gl.currentShaderProgramID == polymost1CurrentShaderProgramID)
+#endif
     {
         float matrix[16] = {
             1.f, 0.f, 0.f, 0.f,
@@ -3121,13 +3214,21 @@ static void polymost_updaterotmat(void)
         multiplyMatrix4f(matrix, tiltmatrix);
 #endif
         Bmemcpy(polymost1RotMatrix, matrix, sizeof(matrix));
+#ifdef POLYMOST_FIXED_FUNCTION
+        polymost_fixedRotMatrix();
+#else
         glUniformMatrix4fv(polymost1RotMatrixLoc, 1, false, polymost1RotMatrix);
+#endif
     }
 }
 
 static void polymost_identityrotmat(void)
 {
+#ifdef POLYMOST_FIXED_FUNCTION
+    if (videoGetRenderMode() == REND_POLYMOST)
+#else
     if (gl.currentShaderProgramID == polymost1CurrentShaderProgramID)
+#endif
     {
         float matrix[16] = {
             1.f, 0.f, 0.f, 0.f,
@@ -3136,7 +3237,11 @@ static void polymost_identityrotmat(void)
             0.f, 0.f, 0.f, 1.f,
         };
         Bmemcpy(polymost1RotMatrix, matrix, sizeof(matrix));
+#ifdef POLYMOST_FIXED_FUNCTION
+        polymost_fixedRotMatrix();
+#else
         glUniformMatrix4fv(polymost1RotMatrixLoc, 1, false, polymost1RotMatrix);
+#endif
     }
 }
 

@@ -3776,6 +3776,13 @@ static void MigrateToVRAM(void)
   }
 }
 
+// Texels as bytes in memory order: GL_UNSIGNED_BYTE, or (the 3DS being
+// little-endian) GL_UNSIGNED_INT_8_8_8_8_REV, as EDuke32 sends them.
+static bool BytesType(GLenum type)
+{
+  return type == GL_UNSIGNED_BYTE || type == GL_UNSIGNED_INT_8_8_8_8_REV;
+}
+
 void glTexImage2D(GLenum target_, GLint level, GLint internal_format, GLsizei width,
                   GLsizei height, GLint border, GLenum format, GLenum type,
                   const GLvoid *pixels)
@@ -3788,7 +3795,7 @@ void glTexImage2D(GLenum target_, GLint level, GLint internal_format, GLsizei wi
   if (!t || level != 0)
     return;
 
-  if (type != GL_UNSIGNED_BYTE)
+  if (!BytesType(type))
   {
     SetError(GL_INVALID_ENUM);
     return;
@@ -3839,7 +3846,7 @@ void glTexSubImage2D(GLenum target_, GLint level, GLint xoffset, GLint yoffset,
 {
   texture_t *t = ActiveTexture();
 
-  if (!t || !t->has_data || level != 0 || type != GL_UNSIGNED_BYTE)
+  if (!t || !t->has_data || level != 0 || !BytesType(type))
     return;
 
   TextureChanging(t);

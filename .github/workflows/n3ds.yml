@@ -1,0 +1,106 @@
+name: n3ds
+
+on:
+  push:
+    branches: [n3ds]
+  pull_request:
+    branches: [n3ds]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # SDL2 for the 3DS, built from source (devkitPro has none for the 3DS).
+      - name: Build the libraries
+        run: sh tools/3ds/build-deps.sh
+
+      - name: Build EDuke32
+        run: sh tools/3ds/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: duke3d-3dsx
+          path: eduke32.3dsx
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: duke3d-elf
+          path: eduke32.elf
+
+  cia:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: duke3d-elf
+
+      - name: Install makerom and bannertool
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/3ds/install-tools.sh
+
+      - name: Make the CIA
+        run: |
+          tools/3ds/make-cia.sh eduke32.elf duke3d.cia \
+            "Duke Nukem 3D" "EDuke32 for New 3DS" "AlexanderV387, EDuke32, NBlood" \
+            0xF3D5B CTR-H-DUKE platform/3DS/duke3d/icon.png platform/3DS/duke3d/banner.png \
+            platform/3DS/duke3d/banner.wav
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: duke3d-cia
+          path: duke3d.cia
+
+  release:
+    # A commit on n3ds whose first line contains [release] publishes the
+    # .cia and the .3dsx, tagged n3ds-duke3d-v<VERSION> (GitHub creates the
+    # tag), with tools/3ds/release/duke3d/RELEASE_NOTES.md. Only the first
+    # line: a message explaining the word below it must not publish.
+    if: github.ref == 'refs/heads/n3ds' && github.event_name == 'push' && contains(github.event.head_commit.message, '[release')
+    needs: [build, cia]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - id: wanted
+        env:
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          case "$(printf '%s\n' "$MESSAGE" | head -n 1)" in
+            *"[release]"*|*"[release duke3d]"*) echo "go=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "go=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - if: steps.wanted.outputs.go == 'true'
+        uses: actions/checkout@v5
+
+      - if: steps.wanted.outputs.go == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: duke3d-*
+          path: dist
+          merge-multiple: true
+
+      - if: steps.wanted.outputs.go == 'true'
+        id: version
+        run: |
+          ls -la dist
+          echo "tag=n3ds-duke3d-v$(cat tools/3ds/release/duke3d/VERSION)" >> "$GITHUB_OUTPUT"
+          echo "version=v$(cat tools/3ds/release/duke3d/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - if: steps.wanted.outputs.go == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Duke Nukem 3D 3DS ${{ steps.version.outputs.version }}
+          body_path: tools/3ds/release/duke3d/RELEASE_NOTES.md
+          files: |
+            dist/duke3d.cia
+            dist/eduke32.3dsx

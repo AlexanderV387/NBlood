@@ -503,12 +503,14 @@ static void DirtyAll(void)
   pending_changes = CHANGE_ALL;
 }
 
-// The draws of the first frames, for the log if the GPU hangs on one.
-#define DRAW_LOG_SIZE 64
-static char draw_log[DRAW_LOG_SIZE][80];
+// The draws of the first frames, for the log if the GPU hangs on one, and
+// of the frames asked for (pglLogFrames).
+#define DRAW_LOG_SIZE 256
+static char draw_log[DRAW_LOG_SIZE][224];
 static int draw_log_count;
+static int log_frames;
 
-static void LogDraw(const char *what, int count);
+static void LogDraw(const char *what, int first, int count);
 static void FlushBatch(void);
 static void RunPendingClears(void);
 static void MigrateToVRAM(void);
@@ -1264,24 +1266,50 @@ static void DrawVertices(GPU_Primitive_t primitive, int first, int count)
 
   stat_draw_ticks += svcGetSystemTick() - start;
   LogDraw(primitive == GPU_TRIANGLES ? "triangles" : primitive == GPU_TRIANGLE_STRIP ? "strip" : "fan",
-          count);
+          first, count);
 }
 
-static void LogDraw(const char *what, int count)
+static void LogDraw(const char *what, int first, int count)
 {
   texture_t *t;
 
-  if (frame_number > 5)
+  if (frame_number > 5 && !log_frames)
     return;
 
   if (draw_log_count < DRAW_LOG_SIZE)
   {
+    float cz = 0, cw = 0;
+
     t = DrawTexture();
+
+    // The first vertex through the matrices: its depth (z / w) and w.
+    if (first >= 0 && !projected_draw)
+    {
+      const vertex_t *v = &vertices[first];
+      const float *mv = matrices[0].stack[matrices[0].depth];
+      const float *pr = matrices[1].stack[matrices[1].depth];
+      float e[4];
+      int r;
+
+      for (r = 0; r < 4; ++r)
+        e[r] = mv[r] * v->x + mv[4 + r] * v->y + mv[8 + r] * v->z + mv[12 + r];
+
+      cz = pr[2] * e[0] + pr[6] * e[1] + pr[10] * e[2] + pr[14] * e[3];
+      cw = pr[3] * e[0] + pr[7] * e[1] + pr[11] * e[2] + pr[15] * e[3];
+    }
+
     snprintf(draw_log[draw_log_count], sizeof(draw_log[0]),
-             "%s %d: tex %dx%d prog %d fog %d sc %d bl %d at %d dt %d st %d vp %dx%d",
-             what, count, t ? t->tex.width : 0, t ? t->tex.height : 0, program,
-             program == PGL_PROGRAM_LIGHT && fog_table, scissor_on, blend_on,
-             alpha_test_on, depth_test_on, stencil_test_on, viewport[2], viewport[3]);
+             "%s %d: tex %d %dx%d f%d %s%s prog %d fog %d bl %d %x/%x eq %x at %d %x %.2f "
+             "dt %d %x dm %d cm %d%d%d%d st %d sc %d vp %dx%d z/w %.6f w %.4f col %02x%02x%02x%02x",
+             what, count, t ? (int) (t - textures) : 0, t ? t->tex.width : 0, t ? t->tex.height : 0,
+             t ? (int) t->tex.fmt : -1, t && !t->has_data ? "NODATA " : "",
+             t && t->has_data && IsVRAM(t->tex.data) ? "vram" : "", program, fog_on, blend_on,
+             blend_src, blend_dst, blend_equation, alpha_test_on, alpha_func, alpha_ref,
+             depth_test_on, depth_func, depth_mask, color_mask[0], color_mask[1], color_mask[2],
+             color_mask[3], stencil_test_on, scissor_on, viewport[2], viewport[3],
+             cw != 0 ? cz / cw : 0, cw,
+             first >= 0 ? vertices[first].r : 0, first >= 0 ? vertices[first].g : 0,
+             first >= 0 ? vertices[first].b : 0, first >= 0 ? vertices[first].a : 0);
   }
 
   ++draw_log_count;
@@ -1630,6 +1658,11 @@ void pglDeleteContext(void)
   initialized = false;
 }
 
+void pglLogFrames(int frames)
+{
+  log_frames = frames;
+}
+
 void pglSetBeforeSwap(void (*callback)(void))
 {
   before_swap = callback;
@@ -1666,6 +1699,18 @@ void pglSwapBuffers(void)
 
     C3D_FrameEnd(0);
     stat_end_ticks += svcGetSystemTick() - start;
+  }
+
+  if (log_frames)
+  {
+    int k;
+
+    printf("pgl: frame %lu: %d draws:\n", (unsigned long) frame_number, draw_log_count);
+    for (k = 0; k < draw_log_count && k < DRAW_LOG_SIZE; ++k)
+      printf("pgl:   %s\n", draw_log[k]);
+    if (draw_log_count > DRAW_LOG_SIZE)
+      printf("pgl:   (%d more)\n", draw_log_count - DRAW_LOG_SIZE);
+    --log_frames;
   }
 
   if (frame_number <= 3)
@@ -2170,7 +2215,7 @@ static void ScreenQuad(const float *color, float z, int write, bool blend, bool 
   C3D_DrawArrays(GPU_TRIANGLE_STRIP, vertex_count, 4);
   vertex_count += 4;
   ++frame_draws;
-  LogDraw(blend ? "screen tint" : "clear quad", 4);
+  LogDraw(blend ? "screen tint" : "clear quad", -1, 4);
 
   // The OpenGL states again at the next draw.
   DirtyAll();
@@ -2247,7 +2292,7 @@ static void DoClear(GLbitfield mask)
     FlushBatch();
     C3D_FrameSplit(0);
     C3D_RenderTargetClear(target, bits, color_value, depth_value);
-    LogDraw(bits == C3D_CLEAR_COLOR ? "fill color" : bits == C3D_CLEAR_DEPTH ? "fill depth" : "fill both", 0);
+    LogDraw(bits == C3D_CLEAR_COLOR ? "fill color" : bits == C3D_CLEAR_DEPTH ? "fill depth" : "fill both", -1, 0);
     return;
   }
 

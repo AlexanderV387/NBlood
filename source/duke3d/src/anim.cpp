@@ -581,6 +581,11 @@ int32_t Anim_Play(const char *fn)
 
         i = VM_OnEventWithReturn(EVENT_CUTSCENE, g_player[screenpeek].ps->i, screenpeek, i);
 
+#if defined __3DS__ && defined USE_OPENGL
+        // GPU mode: one frame's draws in the log (the cutscenes came out white).
+        if (videoGetRenderMode() >= REND_POLYMOST && i == 8)
+            pglLogFrames(1);
+#endif
         videoNextPage();
 
         ototalclock += anim->framedelay;

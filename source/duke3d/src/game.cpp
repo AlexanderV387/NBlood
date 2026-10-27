@@ -7212,6 +7212,21 @@ MAIN_LOOP_RESTART:
 #endif
             }
 
+#if defined __3DS__ && defined USE_OPENGL
+            // GPU mode, in a level: a frame's draws in the log every 20
+            // seconds (for the drawing errors only seen on the 3DS).
+            if (videoGetRenderMode() >= REND_POLYMOST && (myplayer.gm & MODE_GAME) && !(myplayer.gm & MODE_MENU))
+            {
+                static uint32_t nextDrawLog;
+
+                if (timerGetTicks() >= nextDrawLog)
+                {
+                    if (nextDrawLog)
+                        pglLogFrames(1);
+                    nextDrawLog = timerGetTicks() + 20000;
+                }
+            }
+#endif
             //g_switchRoutine(co_drawframe);
             drawframe_do();
         }

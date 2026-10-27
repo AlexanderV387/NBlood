@@ -56,10 +56,16 @@ static SDL_GLContext n3ds_gl_open(void)
 static void n3ds_gl_swap(void)
 {
     int work_us, gpu_us;
+    bool const logged = pglLogFramesLeft() > 0;
 
     pglSwapBuffers();
     pglFrameTimes(&work_us, &gpu_us);
     n3ds_present_bottom((const uint8_t *) curpalettefaded, work_us, gpu_us);
+
+    // For the log's frames: whether the bottom screen (the software
+    // renderer, sharing the engine's state) was drawn right after.
+    if (logged)
+        LOG_F(INFO, "3DS: bottom screen drawn after this frame: %s", n3ds_bottom_was_drawn() ? "yes" : "no");
 }
 
 # define SDL_GL_CreateContext(window) n3ds_gl_open()

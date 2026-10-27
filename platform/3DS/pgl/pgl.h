@@ -32,6 +32,7 @@ void *pglGetProcAddress(const char *name);
 
 // The next frames' draws, each with its states, in the log (printf).
 void pglLogFrames(int frames);
+int pglLogFramesLeft(void);
 
 // Called in pglSwapBuffers, before the frame is shown: the last draws
 // (e.g. a full-screen tint).

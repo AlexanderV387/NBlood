@@ -1668,6 +1668,11 @@ void pglLogFrames(int frames)
   log_frames = frames;
 }
 
+int pglLogFramesLeft(void)
+{
+  return log_frames;
+}
+
 void pglSetBeforeSwap(void (*callback)(void))
 {
   before_swap = callback;

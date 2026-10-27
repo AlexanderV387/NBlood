@@ -1300,6 +1300,11 @@ void n3ds_present_bottom(const uint8_t *palette, int work_us, int gpu_us)
     Present(NULL, 0, 0, palette, work_us, gpu_us);
 }
 
+int n3ds_bottom_was_drawn(void)
+{
+    return frame.bottom;
+}
+
 void n3ds_release_top(void)
 {
     if (present_thread != NULL)

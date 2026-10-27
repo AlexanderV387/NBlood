@@ -1088,9 +1088,15 @@ extern "C" __attribute__((noreturn)) void __assert_func(const char *file, int li
 }
 
 // Leaving any other way: where the game was (with the log still open).
+// Straight to the file: at exit the engine's console, which the log also
+// goes to, is gone (logging there crashed).
 static void LogExit(void)
 {
-    LOG_F(INFO, "3DS: exit; the game was at \"%s\"", n3ds_where);
+    if (FILE *log = fopen(N3DS_GAME_DIR "/" APPBASENAME ".log", "a"))
+    {
+        fprintf(log, "3DS: exit; the game was at \"%s\"\n", n3ds_where);
+        fclose(log);
+    }
 }
 
 // On the system core (1), which the game may use up to 80% of the time.

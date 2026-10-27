@@ -64,8 +64,15 @@ static void n3ds_gl_swap(void)
 
     // For the log's frames: whether the bottom screen (the software
     // renderer, sharing the engine's state) was drawn right after.
+    extern int32_t n3ds_poly_counts[6];
+
     if (logged)
-        LOG_F(INFO, "3DS: bottom screen drawn after this frame: %s", n3ds_bottom_was_drawn() ? "yes" : "no");
+        LOG_F(INFO, "3DS: bottom screen drawn after this frame: %s; polygons: %d, culled %d, facing away %d, "
+              "behind %d, degenerate %d, no texture %d",
+              n3ds_bottom_was_drawn() ? "yes" : "no", n3ds_poly_counts[0], n3ds_poly_counts[1], n3ds_poly_counts[2],
+              n3ds_poly_counts[3], n3ds_poly_counts[4], n3ds_poly_counts[5]);
+
+    Bmemset(n3ds_poly_counts, 0, sizeof(n3ds_poly_counts));
 }
 
 # define SDL_GL_CreateContext(window) n3ds_gl_open()

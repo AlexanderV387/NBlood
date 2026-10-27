@@ -106,6 +106,29 @@ static void n3ds_gl_swap(void)
                 n3ds_fclose(f);
                 LOG_F(INFO, "3DS: the GPU's image of this frame in %s", name);
             }
+
+            // And its depth (diagnosis): the same pixels, 24 bits each.
+            if (pglReadDepth(bgr))
+            {
+                n = snprintf((char *) ppm, 32, "P6\n%d %d\n255\n", out_w, out_h);
+
+                for (int y = 0; y < out_h; ++y)
+                    for (int x = 0; x < out_w; ++x)
+                    {
+                        unsigned char const *in = bgr + ((height - 1 - y * 2) * width + x * step) * 3;
+                        ppm[n++] = in[0];
+                        ppm[n++] = in[1];
+                        ppm[n++] = in[2];
+                    }
+
+                snprintf(name, sizeof(name), "depth-%u.ppm", (shots - 1) % 8);
+
+                if (FILE *f = n3ds_fopen_rewrite(name))
+                {
+                    fwrite(ppm, 1, n, f);
+                    n3ds_fclose(f);
+                }
+            }
         }
     }
 

@@ -42,6 +42,7 @@ void pglLogFrames(int frames);
 // pixels of blue, green, red, from the bottom row up (as a .bmp has them).
 // bgr: room for 800 x 240 x 3. Waits for the GPU.
 bool pglReadTarget(unsigned char *bgr, int *width, int *height);
+bool pglReadDepth(unsigned char *rgb);
 int pglLogFramesLeft(void);
 
 // Called in pglSwapBuffers, before the frame is shown: the last draws

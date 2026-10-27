@@ -4265,6 +4265,32 @@ bool pglReadTarget(unsigned char *bgr, int *width, int *height)
   return true;
 }
 
+// Diagnosis (to remove): the depth buffer of the frame pglReadTarget just
+// read, 24 bits a pixel (high byte first), laid out as its image.
+bool pglReadDepth(unsigned char *rgb)
+{
+  const u32 *depth_buffer;
+  int x, y;
+
+  if (!initialized || in_frame || Closing() || !target->frameBuf.depthBuf)
+    return false;
+
+  depth_buffer = (const u32 *) target->frameBuf.depthBuf;
+
+  for (y = 0; y < TOP_HEIGHT; ++y)
+    for (x = 0; x < TARGET_WIDTH; ++x)
+    {
+      const u32 value = depth_buffer[TexelOffset(y, x, TOP_HEIGHT)];
+      unsigned char *out = rgb + (y * TARGET_WIDTH + x) * 3;
+
+      out[0] = value >> 16;
+      out[1] = value >> 8;
+      out[2] = value;
+    }
+
+  return true;
+}
+
 void glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format,
                   GLenum type, GLvoid *pixels)
 {

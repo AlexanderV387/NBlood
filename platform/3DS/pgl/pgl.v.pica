@@ -16,6 +16,8 @@
 .alias ZERO consts.yyyy
 .alias INV255 consts.zzzz
 .alias MINUS_HALF consts.wwww
+.constf nearw(0.0005, 0.0, 0.0, 0.0)
+.alias NEAR_W nearw.xxxx  ; w of the near plane: just before the eye
 
 .out outpos position
 .out outtc0 texcoord0
@@ -34,11 +36,13 @@
 	dp4 r5.y, mvp[1], r0
 	dp4 r5.w, mvp[3], r0
 
-	; z is -w / 2: the depth is made of w alone (W-buffering, see pgl.c's
-	; ApplyFragment), and nothing is clipped by the near and far planes
-	; (z from -w to 0), as OpenGL's GL_DEPTH_CLAMP: walls the player stands
-	; against were cut open (what was behind showed).
-	mul r5.z, MINUS_HALF, r5.wwww
+	; z is -(w + NEAR_W) / 2: the depth is made of w alone (W-buffering,
+	; see pgl.c's ApplyFragment), and only what is nearer than NEAR_W
+	; (z from -w to 0) is clipped, as OpenGL's GL_DEPTH_CLAMP: walls the
+	; player stands against were cut open (what was behind showed). Not
+	; at the eye (w 0): what crossed it was drawn across the screen.
+	add r6.x, NEAR_W, r5.wwww
+	mul r5.z, MINUS_HALF, r6.xxxx
 	mov outpos, r5
 
 	mul outclr, INV255, inclr

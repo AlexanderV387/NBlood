@@ -57,7 +57,8 @@ static SDL_GLContext n3ds_gl_open(void)
 static void n3ds_gl_swap(void)
 {
     int work_us, gpu_us;
-    bool const logged = pglLogFramesLeft() > 0;
+    int const left = pglLogFramesLeft();
+    bool const logged = left > 0;
 
     pglSetWide(n3ds_gpu_wide && n3ds_wide_supported());  // (the option may change)
     pglSwapBuffers();
@@ -67,6 +68,46 @@ static void n3ds_gl_swap(void)
     // For the log's frames: whether the bottom screen (the software
     // renderer, sharing the engine's state) was drawn right after.
     extern int32_t n3ds_poly_counts[6];
+
+    // The first logged frame's image, as the GPU drew it, at half size
+    // (shot-N.ppm, N from 0 to 7 and again): what to set the log's draws
+    // against. Small and over an old file: a big new one took seconds.
+    if (left == 3)
+    {
+        static unsigned char *bgr;
+        static unsigned shots;
+        int width, height;
+
+        if (!bgr)
+            bgr = (unsigned char *) Xmalloc(800 * 240 * 3);
+
+        if (pglReadTarget(bgr, &width, &height))
+        {
+            int const step = width / 200, out_w = width / step, out_h = height / 2;
+            static unsigned char ppm[32 + 400 * 120 * 3];
+            int n = snprintf((char *) ppm, 32, "P6\n%d %d\n255\n", out_w, out_h);
+
+            for (int y = 0; y < out_h; ++y)
+                for (int x = 0; x < out_w; ++x)
+                {
+                    // (bgr's rows from the bottom)
+                    unsigned char const *in = bgr + ((height - 1 - y * 2) * width + x * step) * 3;
+                    ppm[n++] = in[2];
+                    ppm[n++] = in[1];
+                    ppm[n++] = in[0];
+                }
+
+            char name[32];
+            snprintf(name, sizeof(name), "shot-%u.ppm", shots++ % 8);
+
+            if (FILE *f = n3ds_fopen_rewrite(name))
+            {
+                fwrite(ppm, 1, n, f);
+                n3ds_fclose(f);
+                LOG_F(INFO, "3DS: the GPU's image of this frame in %s", name);
+            }
+        }
+    }
 
     if (logged)
         LOG_F(INFO, "3DS: bottom screen drawn after this frame: %s; polygons: %d, culled %d, facing away %d, "

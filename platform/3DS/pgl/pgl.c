@@ -506,7 +506,7 @@ static void DirtyAll(void)
 // The draws of the first frames, for the log if the GPU hangs on one, and
 // of the frames asked for (pglLogFrames).
 #define DRAW_LOG_SIZE 256
-static char draw_log[DRAW_LOG_SIZE][224];
+static char draw_log[DRAW_LOG_SIZE][272];
 static int draw_log_count;
 static int log_frames;
 
@@ -1278,7 +1278,7 @@ static void LogDraw(const char *what, int first, int count)
 
   if (draw_log_count < DRAW_LOG_SIZE)
   {
-    float cz = 0, cw = 0;
+    float cz = 0, cw = 0, sx = 0, sy = 0;
 
     t = DrawTexture();
 
@@ -1294,13 +1294,16 @@ static void LogDraw(const char *what, int first, int count)
       for (r = 0; r < 4; ++r)
         e[r] = mv[r] * v->x + mv[4 + r] * v->y + mv[8 + r] * v->z + mv[12 + r];
 
+      sx = pr[0] * e[0] + pr[4] * e[1] + pr[8] * e[2] + pr[12] * e[3];
+      sy = pr[1] * e[0] + pr[5] * e[1] + pr[9] * e[2] + pr[13] * e[3];
       cz = pr[2] * e[0] + pr[6] * e[1] + pr[10] * e[2] + pr[14] * e[3];
       cw = pr[3] * e[0] + pr[7] * e[1] + pr[11] * e[2] + pr[15] * e[3];
     }
 
     snprintf(draw_log[draw_log_count], sizeof(draw_log[0]),
              "%s %d: tex %d %dx%d f%d %s%s prog %d fog %d bl %d %x/%x eq %x at %d %x %.2f "
-             "dt %d %x dm %d cm %d%d%d%d st %d sc %d vp %dx%d z/w %.6f w %.4f col %02x%02x%02x%02x",
+             "dt %d %x dm %d cm %d%d%d%d st %d sc %d vp %dx%d z/w %.6f w %.4f col %02x%02x%02x%02x "
+             "xy %.4f,%.4f st %.3f,%.3f",
              what, count, t ? (int) (t - textures) : 0, t ? t->tex.width : 0, t ? t->tex.height : 0,
              t ? (int) t->tex.fmt : -1, t && !t->has_data ? "NODATA " : "",
              t && t->has_data && IsVRAM(t->tex.data) ? "vram" : "", program, fog_on, blend_on,
@@ -1309,7 +1312,9 @@ static void LogDraw(const char *what, int first, int count)
              color_mask[3], stencil_test_on, scissor_on, viewport[2], viewport[3],
              cw != 0 ? cz / cw : 0, cw,
              first >= 0 ? vertices[first].r : 0, first >= 0 ? vertices[first].g : 0,
-             first >= 0 ? vertices[first].b : 0, first >= 0 ? vertices[first].a : 0);
+             first >= 0 ? vertices[first].b : 0, first >= 0 ? vertices[first].a : 0,
+             cw != 0 && first >= 0 ? sx / cw : 0, cw != 0 && first >= 0 ? sy / cw : 0,
+             first >= 0 ? vertices[first].s : 0, first >= 0 ? vertices[first].t : 0);
   }
 
   ++draw_log_count;

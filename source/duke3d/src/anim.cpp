@@ -583,7 +583,7 @@ int32_t Anim_Play(const char *fn)
 
 #if defined __3DS__ && defined USE_OPENGL
         // GPU mode: one frame's draws in the log (the cutscenes came out white).
-        if (videoGetRenderMode() >= REND_POLYMOST && i == 8)
+        if (videoGetRenderMode() >= REND_POLYMOST && i == 2)
             pglLogFrames(1);
 #endif
         videoNextPage();

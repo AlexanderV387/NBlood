@@ -7225,6 +7225,20 @@ MAIN_LOOP_RESTART:
                         pglLogFrames(1);
                     nextDrawLog = timerGetTicks() + 20000;
                 }
+
+                // L and R together: the next 3 frames (when something
+                // looks wrong).
+                static bool wasLR;
+                unsigned const LR = (1u << N3DS_BUTTON_L) | (1u << N3DS_BUTTON_R);
+                bool const isLR = (n3ds_buttons_held() & LR) == LR;
+
+                if (isLR && !wasLR)
+                {
+                    LOG_F(INFO, "3DS: L+R: the next 3 frames' draws");
+                    pglLogFrames(3);
+                }
+
+                wasLR = isLR;
             }
 #endif
             //g_switchRoutine(co_drawframe);

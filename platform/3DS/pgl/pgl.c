@@ -70,6 +70,13 @@ extern u32 __ctru_linear_heap_size;
 // stays 1. Polymost's sky is at 24.4; its walls mostly within 2.
 #define W_RANGE 32.f
 
+// The clip space (x, y, z, w) is made W_SCALE times larger on the GPU: the
+// same picture (it is divided by w), but Polymost's w is small (a wall the
+// player stands against is at 0.01), and the PICA200 computes from 1 / w:
+// so large it overflowed, those walls drew without their depth, and the
+// sprites behind them showed through (doors, ducts).
+#define W_SCALE 1024.f
+
 // VRAM kept free when placing textures (bytes).
 #define VRAM_RESERVE (256 * 1024)
 
@@ -386,6 +393,8 @@ static void ComputeMatrices(void)
 {
   if (mvp_dirty)
   {
+    int k;
+
     if (projected_draw)
     {
       static const matrix_t identity = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
@@ -400,6 +409,9 @@ static void ComputeMatrices(void)
                      matrices[0].stack[matrices[0].depth]);
       MatrixMultiply(desired.mvp, screen_fix, projected);
     }
+
+    for (k = 0; k < 16; ++k)
+      desired.mvp[k] *= W_SCALE;
 
     if (memcmp(desired.mvp, applied.mvp, sizeof(matrix_t)))
       pending_changes |= CHANGE_MVP;
@@ -934,7 +946,7 @@ static void ApplyFragment(void)
   // steps near and far. With the usual depth (z / w, steps far apart in
   // the distance), things far away showed through the walls in front of
   // them and their fog flickered. The vertex shader makes z / w -0.5.
-  C3D_DepthMap(false, 0.0f, 1.0f / W_RANGE);
+  C3D_DepthMap(false, 0.0f, 1.0f / (W_RANGE * W_SCALE));
 }
 
 // A texture unit's binding, or NULL.

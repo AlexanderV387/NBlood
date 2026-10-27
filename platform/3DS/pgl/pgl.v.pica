@@ -16,7 +16,7 @@
 .alias ZERO consts.yyyy
 .alias INV255 consts.zzzz
 .alias MINUS_HALF consts.wwww
-.constf nearw(0.0005, 0.0, 0.0, 0.0)
+.constf nearw(0.5, 0.0, 0.0, 0.0)  ; (0.0005 in Polymost's w: see W_SCALE)
 .alias NEAR_W nearw.xxxx  ; w of the near plane: just before the eye
 
 .out outpos position

@@ -43,7 +43,14 @@ extern "C" {
 static SDL_GLContext n3ds_gl_open(void)
 {
     n3ds_release_top();
-    return pglCreateContext() ? (SDL_GLContext) 1 : nullptr;
+
+    if (!pglCreateContext())
+        return nullptr;
+
+    // Textures in 16 bits: half the memory (the 3DS's runs out with a
+    // level's in 32), and Duke's 256 colors lose little.
+    pglTextures16(true);
+    return (SDL_GLContext) 1;
 }
 
 static void n3ds_gl_swap(void)

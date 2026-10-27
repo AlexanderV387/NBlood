@@ -593,8 +593,13 @@ void polymost_resetVertexPointers()
 // otherwise the identity in the 3D view.
 static void polymost_fixedRotMatrix(void)
 {
+    // The caller's matrix mode back: rotatesprite sets the projection
+    // right after updating the rotation.
+    GLint mode = GL_MODELVIEW;
+    glGetIntegerv(GL_MATRIX_MODE, &mode);
     glMatrixMode(GL_MODELVIEW);
     glLoadMatrixf(polymost1RotMatrix);
+    glMatrixMode(mode);
 }
 
 // The states the shaders' uniforms stood for.
@@ -2387,6 +2392,9 @@ void gloadtile_art(int32_t dapic, int32_t dapal, int32_t tintpalnum, int32_t das
                       (hasfullbright * DAMETH_HASFULLBRIGHT) |
                       (npoty * DAMETH_NPOTWALL) |
                       (hasalpha * (DAMETH_HASALPHA|DAMETH_ONEBITALPHA)));
+#ifdef __3DS__
+        pglTextureEvictable();  // made again from the tile if let go (texcache_tryart)
+#endif
 
         Xfree(pic);
     }

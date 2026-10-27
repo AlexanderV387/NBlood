@@ -14,6 +14,14 @@
 #include "glad/glad.h"
 #include "hightile.h"
 
+#ifdef __3DS__
+// pgl (platform/3DS/pgl): its textures can be let go when the memory is
+// short (pglTextureEvictable), and are then made again when used.
+extern "C" {
+# include "pgl/pgl.h"
+}
+#endif
+
 extern int32_t rendmode;
 extern float gtang;
 extern int polymost2d;

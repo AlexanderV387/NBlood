@@ -104,6 +104,25 @@ static pthtyp *texcache_tryart(int32_t const dapicnum, int32_t const dapalnum, i
                      (TO_PTH_CLAMPED(dameth) | TO_PTH_NOTRANSFIX(dameth)) &&
                  polymost_want_npotytex(dameth, tilesiz[dapicnum].y) == !!(pth->flags&PTH_NPOTWALL))))
         {
+#ifdef __3DS__
+            // Let go by pgl for room (or its fullbright part): made anew.
+            if (!pglTextureResident(pth->glpic) || ((pth->flags & PTH_HASFULLBRIGHT) && pth->ofb && !pglTextureResident(pth->ofb->glpic)))
+            {
+                glDeleteTextures(1, &pth->glpic);
+                pth->glpic = 0;
+
+                if (pth->ofb)
+                {
+                    glDeleteTextures(1, &pth->ofb->glpic);
+                    pth->ofb->glpic = 0;
+                }
+
+                pth->flags &= ~PTH_INVALIDATED;
+                gloadtile_art(dapicnum, searchpalnum, tintpalnum, dashade, dameth, pth, 1);
+                pth->palnum = dapalnum;
+                return pth;
+            }
+#endif
             if (pth->flags & PTH_INVALIDATED)
             {
                 pth->flags &= ~PTH_INVALIDATED;

@@ -421,9 +421,11 @@ static void G_DoLoadScreen(const char *statustext, int percent)
 static void cacheExtraTextureMaps(int tileNum, int type)
 {
 #if defined USE_OPENGL && defined __3DS__
-    // Only the normal palette's: a texture for each palette of each tile
-    // filled the 3DS's memory; the others are made when first seen.
-    polymost_precache(tileNum, 0, type);
+    // None: made all at once, the level's textures filled the 3DS's memory
+    // before any could be let go; each is made when first seen (the tile
+    // itself is loaded already).
+    UNREFERENCED_PARAMETER(tileNum);
+    UNREFERENCED_PARAMETER(type);
 #elif defined USE_OPENGL
     for (int i = 0; i < MAXPALOOKUPS-RESERVEDPALS-1; i++)
     {

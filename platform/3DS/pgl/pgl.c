@@ -3647,6 +3647,50 @@ static void ReleasePendingNow(void)
   FreePending();
 }
 
+// In the log: what the textures take, in main (linear) memory (those that
+// can be let go and the others) and in VRAM, and what waits to be freed.
+static void LogTextureMemory(void)
+{
+  u32 linear_evictable = 0, linear_kept = 0, vram = 0, pending = 0;
+  int count_evictable = 0, count_kept = 0, count_vram = 0, k;
+
+  for (k = 1; k < texture_count; ++k)
+  {
+    const texture_t *t = &textures[k];
+
+    if (!t->has_data || !t->tex.data)
+      continue;
+
+    if (IsVRAM(t->tex.data))
+    {
+      vram += t->tex.size;
+      ++count_vram;
+    }
+    else if (t->evictable)
+    {
+      linear_evictable += t->tex.size;
+      ++count_evictable;
+    }
+    else
+    {
+      linear_kept += t->tex.size;
+      ++count_kept;
+    }
+  }
+
+  for (k = 0; k < pending_count; ++k)
+    if (!IsVRAM(pending_free[k]))
+      pending += linearGetSize(pending_free[k]);
+
+  printf("pgl: memory: %u KiB of linear memory free; textures: "
+         "%d in linear memory that can go (%u KiB), %d that cannot (%u KiB), %d in VRAM (%u KiB); "
+         "%d pieces waiting to be freed (%u KiB in linear memory); frame %lu\n",
+         (unsigned) (linearSpaceFree() / 1024),
+         count_evictable, (unsigned) (linear_evictable / 1024), count_kept, (unsigned) (linear_kept / 1024),
+         count_vram, (unsigned) (vram / 1024), pending_count, (unsigned) (pending / 1024),
+         (unsigned long) frame_number);
+}
+
 static bool UploadToVRAM(texture_t *t, int tex_width, int tex_height, GPU_TEXCOLOR fmt,
                          GLenum format, const void *pixels)
 {
@@ -3818,7 +3862,14 @@ void glTexImage2D(GLenum target_, GLint level, GLint internal_format, GLsizei wi
   {
     if (!C3D_TexInit(&t->tex, tex_width, tex_height, fmt))
     {
+      static int failures;
+
       printf("pgl: no memory for a %dx%d texture\n", tex_width, tex_height);
+
+      // What holds the memory, the first times and then now and then.
+      if (failures++ % 200 == 0)
+        LogTextureMemory();
+
       SetError(GL_OUT_OF_MEMORY);
       return;
     }

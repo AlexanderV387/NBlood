@@ -105,8 +105,20 @@ static pthtyp *texcache_tryart(int32_t const dapicnum, int32_t const dapalnum, i
                  polymost_want_npotytex(dameth, tilesiz[dapicnum].y) == !!(pth->flags&PTH_NPOTWALL))))
         {
 #ifdef __3DS__
-            // Let go by pgl for room (or its fullbright part): made anew.
-            if (!pglTextureResident(pth->glpic) || ((pth->flags & PTH_HASFULLBRIGHT) && pth->ofb && !pglTextureResident(pth->ofb->glpic)))
+            // Let go by pgl for room (or its fullbright part): made anew,
+            // a few at a time (when the memory is full, each try fails,
+            // and making them all every frame stopped the game).
+            static uint32_t remakeTime;
+            static int remakes;
+
+            if (timerGetTicks() != remakeTime)
+            {
+                remakeTime = timerGetTicks();
+                remakes = 0;
+            }
+
+            if ((!pglTextureResident(pth->glpic) || ((pth->flags & PTH_HASFULLBRIGHT) && pth->ofb && !pglTextureResident(pth->ofb->glpic)))
+                && remakes++ < 2)
             {
                 glDeleteTextures(1, &pth->glpic);
                 pth->glpic = 0;

@@ -652,7 +652,7 @@ bool tileLoad(int16_t tileNum)
     if (!duke64 || !rt_tileload_callback || !rt_tileload_callback(tileNum))
         tileLoadData(tileNum, dasiz, (char *) waloff[tileNum]);
 
-#ifdef USE_OPENGL
+#if defined USE_OPENGL && !defined POLYMOST_FIXED_FUNCTION  // (no indexed textures there: each tile's two took the 3DS's memory)
     if (videoGetRenderMode() >= REND_POLYMOST &&
         in3dmode())
     {

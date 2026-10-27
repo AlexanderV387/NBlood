@@ -149,6 +149,12 @@ void buildgl_activeTexture(GLenum texture)
 
 void buildgl_bindBuffer(GLenum target, uint32_t bufferID)
 {
+#ifdef __3DS__
+    // Always, as textures (buildgl_bindTexture): a buffer deleted and made
+    // again gets the same name, unbound by the delete.
+    glBindBuffer(target, bufferID);
+    return;
+#endif
     if ((uint32_t)inthash_find(&gl.state[ACTIVETEX], target) == bufferID)
         return;
 
@@ -163,6 +169,15 @@ void buildgl_bindBuffer(GLenum target, uint32_t bufferID)
 //POGOTODO: replace this and buildgl_activeTexture with proper draw call organization
 void buildgl_bindTexture(GLenum target, uint32_t textureID)
 {
+#ifdef __3DS__
+    // Always: pgl gives a deleted texture's name to the next one made, and
+    // the delete unbinds it, so the cache could say a texture is bound when
+    // none is; its upload then went nowhere and its draws had no texture
+    // (the 3D Realms logo was white) or the last one bound. (A bind in pgl
+    // only records the name.)
+    glBindTexture(target, textureID);
+    return;
+#endif
     if (/*textureID == 0 ||*/
         /*gl.currentActiveTexture != GL_TEXTURE0 ||*/
         (uint32_t)inthash_find(&gl.state[ACTIVETEX], target) != textureID /*||

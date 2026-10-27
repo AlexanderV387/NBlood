@@ -1,5 +1,7 @@
 Duke Nukem 3D for the New Nintendo 3DS, on EDuke32 (from the [NBlood](https://github.com/NBlood/NBlood) repository), with the status bar and the map on the bottom screen and an optional GPU renderer.
 
+**Tested only with the shareware episode** (episode 1). The full game, the Atomic Edition and World Tour run on EDuke32 on PC, but have not been tested on the 3DS yet: parts of them may not work.
+
 **New 3DS and New 2DS XL only.** Developed and tested on a New 3DS. It was neither designed nor tested for the Old 3DS or 2DS, where it may run very slowly, run out of memory, or not start.
 
 ## Downloads

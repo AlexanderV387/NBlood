@@ -520,6 +520,37 @@ static void DirtyAll(void)
 #define DRAW_LOG_SIZE 256
 static char draw_log[DRAW_LOG_SIZE][272];
 static int draw_log_count;
+
+// And each draw's vertices on the screen (x, y from -1 to 1, and w), the
+// first ones: to draw the frame again elsewhere and see what should show.
+#define DRAW_LOG_VERTICES 36
+static float draw_log_vertices[DRAW_LOG_SIZE][DRAW_LOG_VERTICES][3];
+static int draw_log_vertex_count[DRAW_LOG_SIZE];
+
+static void PrintDrawLog(void)
+{
+  int k, v;
+
+  for (k = 0; k < draw_log_count && k < DRAW_LOG_SIZE; ++k)
+  {
+    printf("pgl:   %s\n", draw_log[k]);
+
+    for (v = 0; v < draw_log_vertex_count[k]; v += 6)
+    {
+      char line[200];
+      int n = 0, j;
+
+      for (j = v; j < v + 6 && j < draw_log_vertex_count[k]; ++j)
+        n += snprintf(line + n, sizeof(line) - n, " %.4f,%.4f,%.5f", draw_log_vertices[k][j][0],
+                      draw_log_vertices[k][j][1], draw_log_vertices[k][j][2]);
+
+      printf("pgl:   v%s\n", line);
+    }
+  }
+
+  if (draw_log_count > DRAW_LOG_SIZE)
+    printf("pgl:   (%d more)\n", draw_log_count - DRAW_LOG_SIZE);
+}
 static int log_frames;
 
 static void LogDraw(const char *what, int first, int count);
@@ -533,11 +564,7 @@ static void ReportHang(void)
 
   printf("pgl: the GPU did not finish frame %lu; its draws:\n", (unsigned long) frame_number - 1);
 
-  for (k = 0; k < draw_log_count && k < DRAW_LOG_SIZE; ++k)
-    printf("pgl:   %s\n", draw_log[k]);
-
-  if (draw_log_count > DRAW_LOG_SIZE)
-    printf("pgl:   (%d more)\n", draw_log_count - DRAW_LOG_SIZE);
+  PrintDrawLog();
 }
 
 // Starts a citro3d frame once the GPU is done with the last one (and, with
@@ -1330,7 +1357,27 @@ static void LogDraw(const char *what, int first, int count)
       sy = pr[1] * e[0] + pr[5] * e[1] + pr[9] * e[2] + pr[13] * e[3];
       cz = pr[2] * e[0] + pr[6] * e[1] + pr[10] * e[2] + pr[14] * e[3];
       cw = pr[3] * e[0] + pr[7] * e[1] + pr[11] * e[2] + pr[15] * e[3];
+
+      draw_log_vertex_count[draw_log_count] = count < DRAW_LOG_VERTICES ? count : DRAW_LOG_VERTICES;
+
+      for (r = 0; r < draw_log_vertex_count[draw_log_count]; ++r)
+      {
+        const vertex_t *u = &vertices[first + r];
+        float o[4];
+        int c;
+
+        for (c = 0; c < 4; ++c)
+          e[c] = mv[c] * u->x + mv[4 + c] * u->y + mv[8 + c] * u->z + mv[12 + c];
+        for (c = 0; c < 4; ++c)
+          o[c] = pr[c] * e[0] + pr[4 + c] * e[1] + pr[8 + c] * e[2] + pr[12 + c] * e[3];
+
+        draw_log_vertices[draw_log_count][r][0] = o[3] != 0 ? o[0] / o[3] : 0;
+        draw_log_vertices[draw_log_count][r][1] = o[3] != 0 ? o[1] / o[3] : 0;
+        draw_log_vertices[draw_log_count][r][2] = o[3];
+      }
     }
+    else
+      draw_log_vertex_count[draw_log_count] = 0;
 
     snprintf(draw_log[draw_log_count], sizeof(draw_log[0]),
              "%s %d: tex %d %dx%d f%d %s%s prog %d fog %d bl %d %x/%x eq %x at %d %x %.2f "
@@ -1802,10 +1849,7 @@ void pglSwapBuffers(void)
     int k;
 
     printf("pgl: frame %lu: %d draws:\n", (unsigned long) frame_number, draw_log_count);
-    for (k = 0; k < draw_log_count && k < DRAW_LOG_SIZE; ++k)
-      printf("pgl:   %s\n", draw_log[k]);
-    if (draw_log_count > DRAW_LOG_SIZE)
-      printf("pgl:   (%d more)\n", draw_log_count - DRAW_LOG_SIZE);
+    PrintDrawLog();
     --log_frames;
   }
 

@@ -68,42 +68,6 @@ static void n3ds_gl_swap(void)
     // renderer, sharing the engine's state) was drawn right after.
     extern int32_t n3ds_poly_counts[6];
 
-    // And the image the GPU drew, to the SD card (shot-N.bmp).
-    if (logged)
-    {
-        static unsigned char *bgr;
-        static unsigned shots;
-        int width, height;
-
-        if (!bgr)
-            bgr = (unsigned char *) Xmalloc(800 * 240 * 3);
-
-        if (pglReadTarget(bgr, &width, &height))
-        {
-            char name[64];
-            snprintf(name, sizeof(name), "shot-%u.bmp", shots++);
-
-            if (FILE *f = fopen(name, "wb"))
-            {
-                uint32_t const size = width * height * 3;
-                uint8_t header[54] = { 'B', 'M' };
-                auto put32 = [&](int at, uint32_t v) { for (int k = 0; k < 4; ++k) header[at + k] = v >> (k * 8); };
-                put32(2, 54 + size);
-                put32(10, 54);
-                put32(14, 40);
-                put32(18, width);
-                put32(22, height);
-                header[26] = 1;
-                header[28] = 24;
-                put32(34, size);
-                fwrite(header, 1, sizeof(header), f);
-                fwrite(bgr, 1, size, f);
-                fclose(f);
-                LOG_F(INFO, "3DS: the GPU's image in %s", name);
-            }
-        }
-    }
-
     if (logged)
         LOG_F(INFO, "3DS: bottom screen drawn after this frame: %s; polygons: %d, culled %d, facing away %d, "
               "behind %d, degenerate %d, no texture %d",

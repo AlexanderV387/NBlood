@@ -69,8 +69,7 @@ extern u32 __ctru_linear_heap_size;
 // VRAM kept free when placing textures (bytes).
 #define VRAM_RESERVE (256 * 1024)
 
-// Textures copied to VRAM during a frame, at most: two of the GPU list's
-// 32 jobs each (the frame's own and the clears' need some).
+// Textures moved to VRAM before a frame, at most (MigrateToVRAM).
 #define MAX_FRAME_VRAM_UPLOADS 8
 
 // Strips and fans up to this many triangles are drawn as triangles.
@@ -123,6 +122,11 @@ static bool in_frame;
 static u32 frame_number = 1;
 static u64 wait_ticks;      // waiting for the GPU and the screen, this frame
 static u64 last_swap;
+static u64 last_frame_end; // when the last frame went to the GPU
+// The screen's refresh (59.83 a second), and what the GPU's display copy
+// and the swap take after its drawing, at most.
+#define REFRESH_TICKS ((u64) (SYSCLOCK_ARM11 / 59.83))
+#define SWAP_MARGIN_US 2000
 static int work_us, gpu_us; // the last frame's
 static u64 stat_draw_ticks, stat_wait_ticks, stat_upload_ticks, stat_end_ticks;
 static int stat_draws, stat_binds, stat_fog, stat_texenv, stat_uploads;
@@ -132,7 +136,6 @@ static void (*before_swap)(void);
 static vertex_t *vertices;  // in linear memory
 static int vertex_count;    // used this frame
 static bool vertices_full;
-static int frame_vram_uploads; // this frame (see UploadToVRAM)
 
 // Freed when the GPU is done with the frames that may use them.
 static void **pending_free;
@@ -595,9 +598,10 @@ static void BeginFrame(void)
     viewport_dirty = true;
   }
 
+  MigrateToVRAM();
+
   start = svcGetSystemTick();
   StartFrame(work_us < SYNC_WORK_US && !Closing());
-  frame_vram_uploads = 0; // the GPU list starts empty
   wait_ticks += svcGetSystemTick() - start;
   stat_wait_ticks += svcGetSystemTick() - start;
   C3D_FrameDrawOn(target);
@@ -616,7 +620,6 @@ static void BeginFrame(void)
   SetAttributes();
   DirtyAll();
 
-  MigrateToVRAM();
   RunPendingClears();
 }
 
@@ -639,7 +642,6 @@ static void FinishDrawing(void)
   }
 
   StartFrame(false);
-  frame_vram_uploads = 0;
   C3D_FrameDrawOn(target);
 
   if (!in_frame)
@@ -1751,11 +1753,33 @@ void pglSwapBuffers(void)
 
   FlushBatch();
   usage = C3D_GetCmdBufUsage();
+
+  // The last frame went to the screen when the GPU finished it (citro3d
+  // swaps then), but the screen takes the swap only at its next refresh:
+  // until then it still shows the other buffer, the one this frame is
+  // about to be copied into. Copied sooner, the screen showed two frames
+  // at once (things flickering, seen through walls, more when moving): at
+  // least one refresh since that swap first.
+  if (last_frame_end)
+  {
+    const u64 swapped = last_frame_end + (u64) (gpu_us + SWAP_MARGIN_US) * CPU_TICKS_PER_USEC;
+
+    if (svcGetSystemTick() - swapped < REFRESH_TICKS)
+    {
+      const u64 start = svcGetSystemTick();
+
+      gspWaitForVBlank();
+      wait_ticks += svcGetSystemTick() - start;
+      stat_wait_ticks += svcGetSystemTick() - start;
+    }
+  }
+
   {
     const u64 start = svcGetSystemTick();
 
     C3D_FrameEnd(0);
     stat_end_ticks += svcGetSystemTick() - start;
+    last_frame_end = svcGetSystemTick();
   }
 
   if (log_frames)
@@ -2309,50 +2333,11 @@ void pglBlendScreen(float red, float green, float blue, float alpha)
   ScreenQuad(color, 0, GPU_WRITE_COLOR, true, false, false);
 }
 
+// Always a quad, in the draws' own list. A memory fill (GX_MemoryFill)
+// would be faster, but another unit does it, and the depth it cleared late
+// erased the walls' (sprites showed through them, now and then).
 static void DoClear(GLbitfield mask)
 {
-  bool whole, color, depth, stencil;
-
-  color = (mask & GL_COLOR_BUFFER_BIT) != 0;
-  depth = (mask & GL_DEPTH_BUFFER_BIT) != 0;
-  stencil = (mask & GL_STENCIL_BUFFER_BIT) != 0;
-
-  whole = !scissor_on
-       || (scissor_box[0] <= 0 && scissor_box[1] <= 0
-           && scissor_box[0] + scissor_box[2] >= TOP_WIDTH
-           && scissor_box[1] + scissor_box[3] >= TOP_HEIGHT);
-
-  // A memory fill is the fastest, but it takes the whole buffers: depth
-  // and stencil share one. (A depth clear also clears the stencil.)
-  if (whole
-      && (!color || (color_mask[0] && color_mask[1] && color_mask[2] && color_mask[3]))
-      && (!depth || depth_mask)
-      && !(stencil && !depth))
-  {
-    C3D_ClearBits bits = 0;
-    u32 color_value, depth_value;
-
-    if (color)
-      bits |= C3D_CLEAR_COLOR;
-    if (depth)
-      bits |= C3D_CLEAR_DEPTH;
-
-    if (!bits)
-      return;
-
-    color_value = ((u32) ColorByte(clear_color[0]) << 24) | ((u32) ColorByte(clear_color[1]) << 16)
-                | ((u32) ColorByte(clear_color[2]) << 8) | ColorByte(clear_color[3]);
-    depth_value = ((u32) (clear_stencil & 0xFF) << 24)
-                | (u32) ((1 - clear_depth) * 0xFFFFFF);
-
-    // After the draws so far: they go to the GPU first.
-    FlushBatch();
-    C3D_FrameSplit(0);
-    C3D_RenderTargetClear(target, bits, color_value, depth_value);
-    LogDraw(bits == C3D_CLEAR_COLOR ? "fill color" : bits == C3D_CLEAR_DEPTH ? "fill depth" : "fill both", -1, 0);
-    return;
-  }
-
   ClearWithQuad(mask);
 }
 
@@ -3742,11 +3727,12 @@ static void FlushTexels(texture_t *t)
 
 // A texture into VRAM, if there is room (some kept for the screens'
 // buffers). The CPU cannot write VRAM: the texels are made in main memory
-// and the GPU's copier (DMA) takes them there. Between frames (a level's
-// textures, made when it loads) the copy is done at once; during a frame
-// it goes in the GPU's list, before the draws that follow, a few a frame
-// (the list of GPU jobs is short). A copy stays in the heap for the CPU
-// (glGetTexImage).
+// and the GPU's copier (DMA) takes them there, waited for. Only between
+// frames (a level's textures, made when it loads): during a frame the copy
+// went in the GPU's list, but the copier is another unit than the one that
+// draws, and textures were drawn before their copy ended (garbled). Those
+// made during a frame go to main memory, and to VRAM before the next one
+// (MigrateToVRAM). A copy stays in the heap for the CPU (glGetTexImage).
 // Between frames: waits for the GPU to finish the last one, and frees the
 // memory that waited for it (FreeLater). A new level's textures are made
 // right after the old ones are deleted: without this, the old ones still
@@ -3811,7 +3797,7 @@ static bool UploadToVRAM(texture_t *t, int tex_width, int tex_height, GPU_TEXCOL
   const u32 size = tex_width * tex_height * TexelBytes(fmt);
   u32 *staging, *shadow;
 
-  if ((in_frame && frame_vram_uploads >= MAX_FRAME_VRAM_UPLOADS) || Closing())
+  if (in_frame || Closing())
     return false;
 
   if (vramSpaceFree() < size + VRAM_RESERVE)
@@ -3834,19 +3820,8 @@ static bool UploadToVRAM(texture_t *t, int tex_width, int tex_height, GPU_TEXCOL
   WriteTexelsTo(staging, t, 0, 0, t->width, t->height, format, pixels);
   memcpy(shadow, staging, size);
   GSPGPU_FlushDataCache(staging, size);
-
-  if (in_frame)
-  {
-    FlushBatch();
-    C3D_SyncTextureCopy(staging, 0, t->tex.data, 0, size, 8);
-    FreeLater(staging); // copied when the frame goes to the GPU
-    ++frame_vram_uploads;
-  }
-  else
-  {
-    C3D_SyncTextureCopy(staging, 0, t->tex.data, 0, size, 8);
-    linearFree(staging);
-  }
+  C3D_SyncTextureCopy(staging, 0, t->tex.data, 0, size, 8);
+  linearFree(staging);
 
   t->shadow = shadow;
   return true;
@@ -3880,19 +3855,21 @@ static bool MoveOutOfVRAM(texture_t *t)
   return true;
 }
 
-// At a frame's start, textures drawn in the last frame that are still in
-// main memory move to VRAM, a few a frame, the GPU's copier taking their
-// texels before this frame's draws: those made when VRAM was full, or more
-// in a frame than it could take, get there as room is made.
+// Before a frame, textures drawn in the last frame that are still in main
+// memory move to VRAM, a few a frame: those made during a frame (see
+// UploadToVRAM) or when VRAM was full, as room is made. The GPU is waited
+// for first (it may still read them), only when one does move: the copies
+// are done and waited for before the frame's draws.
 static void MigrateToVRAM(void)
 {
   static int next; // where the search goes on, frame after frame
-  int checked;
+  bool waited = false;
+  int checked, moved = 0;
 
-  if (frame_vram_uploads >= MAX_FRAME_VRAM_UPLOADS || texture_count == 0 || Closing())
+  if (texture_count == 0 || Closing())
     return;
 
-  for (checked = 0; checked < texture_count; ++checked)
+  for (checked = 0; checked < texture_count && moved < MAX_FRAME_VRAM_UPLOADS; ++checked)
   {
     texture_t *t;
     void *vram;
@@ -3921,18 +3898,24 @@ static void MigrateToVRAM(void)
       return;
     }
 
+    if (!waited)
+    {
+      StartFrame(false);
+      C3D_FrameEnd(0); // nothing in it
+      FreePending();
+      waited = true;
+    }
+
     memcpy(shadow, t->tex.data, t->tex.size);
     FlushTexels(t); // (already, unless written by another way)
-    C3D_SyncTextureCopy(t->tex.data, 0, vram, 0, t->tex.size, 8);
-    FreeLater(t->tex.data); // read by the copier when the frame goes
+    C3D_SyncTextureCopy(t->tex.data, 0, vram, 0, t->tex.size, 8); // waited for
+    linearFree(t->tex.data);
     t->tex.data = vram;
     t->shadow = shadow;
+    ++moved;
 
     if (t == BoundTexture(0))
       texture_dirty = true;
-
-    if (++frame_vram_uploads >= MAX_FRAME_VRAM_UPLOADS)
-      return;
   }
 }
 

@@ -1471,15 +1471,6 @@ static void fadepaltile(int32_t r, int32_t g, int32_t b, int32_t start, int32_t 
             return;
         }
 
-#if defined __3DS__ && defined USE_OPENGL
-        // GPU mode: a frame of the fade in the log (the 3D Realms logo came
-        // out white).
-        if (videoGetRenderMode() >= REND_POLYMOST && start == 252 - 3 * 28)
-        {
-            LOG_F(INFO, "3DS: logo %d, fade %d, palette %d", tile, start, curbasepal);
-            pglLogFrames(1);
-        }
-#endif
         rotatesprite_fs(160<<16, 100<<16, 65536L, 0, tile, 0, 0, 2+8+64+BGSTRETCH);
         G_FadePalette(r, g, b, start);
         start += step;

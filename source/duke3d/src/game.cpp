@@ -7213,21 +7213,10 @@ MAIN_LOOP_RESTART:
             }
 
 #if defined __3DS__ && defined USE_OPENGL
-            // GPU mode, in a level: a frame's draws in the log every 20
-            // seconds (for the drawing errors only seen on the 3DS).
+            // GPU mode, in a level: L and R together put the next 3
+            // frames' draws in the log (when something looks wrong).
             if (videoGetRenderMode() >= REND_POLYMOST && (myplayer.gm & MODE_GAME) && !(myplayer.gm & MODE_MENU))
             {
-                static uint32_t nextDrawLog;
-
-                if (timerGetTicks() >= nextDrawLog)
-                {
-                    if (nextDrawLog)
-                        pglLogFrames(1);
-                    nextDrawLog = timerGetTicks() + 20000;
-                }
-
-                // L and R together: the next 3 frames (when something
-                // looks wrong).
                 static bool wasLR;
                 unsigned const LR = (1u << N3DS_BUTTON_L) | (1u << N3DS_BUTTON_R);
                 bool const isLR = (n3ds_buttons_held() & LR) == LR;

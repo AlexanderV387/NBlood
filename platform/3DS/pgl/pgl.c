@@ -4113,6 +4113,41 @@ static u32 ReadPixel(const u32 *color_buffer, int x, int y)
   return color_buffer[TexelOffset(rx, ry, TOP_HEIGHT)];
 }
 
+bool pglReadTarget(unsigned char *bgr, int *width, int *height)
+{
+  const u32 *color_buffer;
+  int x, y;
+
+  if (!initialized || in_frame || Closing())
+    return false;
+
+  // The last frame, once the GPU has drawn it (the target keeps it until
+  // the next frame draws over it).
+  StartFrame(false);
+  target->used = false;
+  C3D_FrameEnd(0);
+  StartFrame(false);
+  target->used = false;
+  C3D_FrameEnd(0);
+
+  color_buffer = (const u32 *) target->frameBuf.colorBuf;
+  *width = TARGET_WIDTH;
+  *height = TOP_HEIGHT;
+
+  for (y = 0; y < TOP_HEIGHT; ++y)
+    for (x = 0; x < TARGET_WIDTH; ++x)
+    {
+      const u32 pixel = color_buffer[TexelOffset(y, x, TOP_HEIGHT)];
+      unsigned char *out = bgr + (y * TARGET_WIDTH + x) * 3;
+
+      out[0] = pixel >> 8;
+      out[1] = pixel >> 16;
+      out[2] = pixel >> 24;
+    }
+
+  return true;
+}
+
 void glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format,
                   GLenum type, GLvoid *pixels)
 {

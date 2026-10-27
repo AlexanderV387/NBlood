@@ -3620,10 +3620,22 @@ static void WriteTexelsTo(void *texels, texture_t *t, int xoffset, int yoffset, 
   }
 }
 
+static void FlushTexels(texture_t *t);
+
 static void WriteTexels(texture_t *t, int xoffset, int yoffset, int width, int height,
                         GLenum format, const void *pixels)
 {
   WriteTexelsTo(t->tex.data, t, xoffset, yoffset, width, height, format, pixels);
+  FlushTexels(t);
+}
+
+// After the CPU writes a texture in main memory: out of the CPU's cache, or
+// the GPU (and its copier) read part of the old memory: textures made
+// during a frame showed stripes of garbage until the cache let them go.
+static void FlushTexels(texture_t *t)
+{
+  if (t->tex.data && !IsVRAM(t->tex.data))
+    GSPGPU_FlushDataCache(t->tex.data, t->tex.size);
 }
 
 // A texture into VRAM, if there is room (some kept for the screens'
@@ -3757,6 +3769,7 @@ static bool MoveOutOfVRAM(texture_t *t)
   free(t->shadow);
   t->shadow = NULL;
   t->tex.data = data;
+  FlushTexels(t);
   t->keep_out = true; // changed by the CPU: it stays here
 
   if (t == BoundTexture(0))
@@ -3807,6 +3820,7 @@ static void MigrateToVRAM(void)
     }
 
     memcpy(shadow, t->tex.data, t->tex.size);
+    FlushTexels(t); // (already, unless written by another way)
     C3D_SyncTextureCopy(t->tex.data, 0, vram, 0, t->tex.size, 8);
     FreeLater(t->tex.data); // read by the copier when the frame goes
     t->tex.data = vram;
@@ -3877,7 +3891,10 @@ void glTexImage2D(GLenum target_, GLint level, GLint internal_format, GLsizei wi
     if (pixels)
       WriteTexels(t, 0, 0, width, height, format, pixels);
     else
+    {
       memset(t->tex.data, 0, t->tex.size);
+      FlushTexels(t);
+    }
   }
 
   t->has_data = true;

@@ -71,10 +71,6 @@ void n3ds_present_bottom(const uint8_t *palette, int work_us, int gpu_us);
 // Before the GPU takes the top screen: the other core is done with it.
 void n3ds_release_top(void);
 
-// Whether the last frame presented had the bottom screen drawn (every
-// other one).
-int n3ds_bottom_was_drawn(void);
-
 // Set by the game: draws the bottom screen (from the game's thread);
 // returns whether it shows anything (otherwise black, and a tap turns
 // the backlight off).

@@ -3339,39 +3339,24 @@ void polymost_finishBufferedDrawing(int mode)
     drawpolyVertsCnt = 0;
 }
 
-#ifdef __3DS__
-// Why polygons were not drawn, counted per frame (for the log with L+R):
-// calls, culled (method), facing away (area), behind (dd <= 0), degenerate
-// (under 3 points), no texture.
-int32_t n3ds_poly_counts[6];
-#define N3DS_POLY_COUNT(k) (++n3ds_poly_counts[k])
-#else
-#define N3DS_POLY_COUNT(k) ((void) 0)
-#endif
-
 static void polymost_drawpoly(vec2f_t const* const dpxy, int32_t const n, int32_t method)
 {
     if (doeditorcheck && editstatus)
         polymost_polyeditorfunc(dpxy, n);
-
-    N3DS_POLY_COUNT(0);
 
     if (method == DAMETH_BACKFACECULL ||
 #ifdef YAX_ENABLE
         g_nodraw ||
 #endif
         (uint32_t)globalpicnum >= MAXTILES)
-    {
-        N3DS_POLY_COUNT(1);
         return;
-    }
 
     const int32_t method_ = method;
 
     if (n == 3)
     {
         if ((dpxy[0].x-dpxy[1].x) * (dpxy[2].y-dpxy[1].y) >=
-            (dpxy[2].x-dpxy[1].x) * (dpxy[0].y-dpxy[1].y)) { N3DS_POLY_COUNT(2); return; } //for triangle
+            (dpxy[2].x-dpxy[1].x) * (dpxy[0].y-dpxy[1].y)) return; //for triangle
     }
     else if (n > 3)
     {
@@ -3380,13 +3365,10 @@ static void polymost_drawpoly(vec2f_t const* const dpxy, int32_t const n, int32_
         for (bssize_t i=n-2, j=n-1,k=0; k<n; i=j,j=k,k++)
             f += (dpxy[i].x-dpxy[k].x)*dpxy[j].y;
 
-        if (f <= 0) { N3DS_POLY_COUNT(2); return; }
+        if (f <= 0) return;
     }
     else if (n < 3)
-    {
-        N3DS_POLY_COUNT(4);
         return;
-    }
 
     static int32_t skyzbufferhack_pass = 0;
     if (flatskyrender && skyzbufferhack_pass == 0)
@@ -3445,10 +3427,7 @@ static void polymost_drawpoly(vec2f_t const* const dpxy, int32_t const n, int32_
 
         dd[j] = (dpxy[i].x * xtex.d + dpxy[i].y * ytex.d + otex.d);
         if (dd[j] <= 0.f) // invalid polygon
-        {
-            N3DS_POLY_COUNT(3);
             return;
-        }
         uu[j] = (dpxy[i].x * xtex.u + dpxy[i].y * ytex.u + otex.u);
         vv[j] = (dpxy[i].x * xtex.v + dpxy[i].y * ytex.v + otex.v);
         j++;
@@ -3458,10 +3437,7 @@ static void polymost_drawpoly(vec2f_t const* const dpxy, int32_t const n, int32_
     while ((j >= 3) && (px[j-1] == px[0]) && (py[j-1] == py[0])) j--;
 
     if (j < 3)
-    {
-        N3DS_POLY_COUNT(4);
         return;
-    }
 
     int const npoints = j;
 
@@ -3473,7 +3449,6 @@ static void polymost_drawpoly(vec2f_t const* const dpxy, int32_t const n, int32_
 
     if (!pth)
     {
-        N3DS_POLY_COUNT(5);
         if (editstatus)
         {
             Bsprintf(ptempbuf, "pth==NULL! (bad pal?) pic=%d pal=%d", globalpicnum, globalpal);

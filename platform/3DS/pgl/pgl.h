@@ -38,13 +38,6 @@ void *pglGetProcAddress(const char *name);
 // The next frames' draws, each with its states, in the log (printf).
 void pglLogFrames(int frames);
 
-// The last frame as the GPU drew it: width x height (800 or 400 x 240)
-// pixels of blue, green, red, from the bottom row up (as a .bmp has them).
-// bgr: room for 800 x 240 x 3. Waits for the GPU.
-bool pglReadTarget(unsigned char *bgr, int *width, int *height);
-bool pglReadDepth(unsigned char *rgb);
-bool pglLoggedCommands(const unsigned **words, unsigned *count);
-int pglLogFramesLeft(void);
 
 // Called in pglSwapBuffers, before the frame is shown: the last draws
 // (e.g. a full-screen tint).

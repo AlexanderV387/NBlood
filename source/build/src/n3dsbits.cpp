@@ -1327,11 +1327,6 @@ int n3ds_wide_supported(void)
     return supported;
 }
 
-int n3ds_bottom_was_drawn(void)
-{
-    return frame.bottom;
-}
-
 void n3ds_release_top(void)
 {
     if (present_thread != NULL)

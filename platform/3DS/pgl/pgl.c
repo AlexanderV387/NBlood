@@ -568,18 +568,6 @@ static int log_frames;
 static void LogDraw(const char *what, int first, int count);
 static void FlushBatch(void);
 static void RunPendingClears(void);
-static void DebugMark(int which);
-static inline u32 TexelOffset(int x, int y, int width);
-static bool frame_wrote_depth; // (diagnosis) a draw wrote the depth
-static int depth_checked, depth_lost; // (diagnosis) frames, and those without walls' depth
-static u32 *logged_commands, logged_command_words; // (diagnosis)
-
-bool pglLoggedCommands(const unsigned **words, unsigned *count)
-{
-  *words = (const unsigned *) logged_commands;
-  *count = logged_command_words;
-  return logged_commands != NULL;
-}
 static void ScreenQuad(const float *color, float z, int write, bool blend, bool stencil, bool scissor);
 static void MigrateToVRAM(void);
 
@@ -1347,9 +1335,6 @@ static void DrawVertices(GPU_Primitive_t primitive, int first, int count)
   start = svcGetSystemTick();
   changes = PrepareStates();
 
-  if (desired.fragment.depth_on && (desired.fragment.write & GPU_WRITE_DEPTH))
-    frame_wrote_depth = true;
-
   if (!changes && primitive == GPU_TRIANGLES && batch_count
       && batch_first + batch_count == first)
   {
@@ -1817,11 +1802,6 @@ void pglLogFrames(int frames)
   log_frames = frames;
 }
 
-int pglLogFramesLeft(void)
-{
-  return log_frames;
-}
-
 void pglSetBeforeSwap(void (*callback)(void))
 {
   before_swap = callback;
@@ -1860,7 +1840,6 @@ void pglSwapBuffers(void)
   static int max_draws;
   static float max_usage;
   float usage;
-  bool wrote_depth;
 
   if (!initialized)
     return;
@@ -1879,25 +1858,6 @@ void pglSwapBuffers(void)
   if (before_swap)
     before_swap();
 
-  if (frame_wrote_depth)
-    DebugMark(0);
-  DebugMark(1);
-  wrote_depth = frame_wrote_depth;
-  frame_wrote_depth = false;
-  FlushBatch();
-
-  // Diagnosis: the first logged frame's GPU commands (pglLoggedCommands).
-  if (log_frames == 3)
-  {
-    u32 *buffer, used;
-
-    GPUCMD_GetBuffer(&buffer, NULL, &used);
-    free(logged_commands);
-    logged_commands = malloc(used * sizeof(u32));
-    logged_command_words = logged_commands ? used : 0;
-    if (logged_commands)
-      memcpy(logged_commands, buffer, used * sizeof(u32));
-  }
   FlushBatch();
   usage = C3D_GetCmdBufUsage();
 
@@ -1915,30 +1875,6 @@ void pglSwapBuffers(void)
   }
 
   Present();
-
-  // (Diagnosis) every 4th frame that drew with the depth: whether its walls
-  // wrote theirs (most of the screen still at the clear's 1 if not).
-  if (wrote_depth && (frame_number & 3) == 0 && target->frameBuf.depthBuf)
-  {
-    const u32 *depth_buffer = (const u32 *) target->frameBuf.depthBuf;
-    int x, y, far = 0, total = 0;
-
-    GSPGPU_InvalidateDataCache(target->frameBuf.depthBuf, TOP_HEIGHT * TARGET_WIDTH * 4);
-
-    for (y = 4; y < TOP_HEIGHT; y += 8)
-      for (x = 4; x < TARGET_WIDTH; x += 8, ++total)
-        if ((depth_buffer[TexelOffset(y, x, TOP_HEIGHT)] & 0xFFFFFF) == 0xFFFFFF)
-          ++far;
-
-    if (far * 2 > total)
-      ++depth_lost;
-
-    if (++depth_checked == 120)
-    {
-      printf("pgl: walls without depth in %d of %d frames checked\n", depth_lost, depth_checked);
-      depth_checked = depth_lost = 0;
-    }
-  }
 
   if (log_frames)
   {
@@ -2460,71 +2396,6 @@ static void ScreenQuad(const float *color, float z, int write, bool blend, bool 
   DirtyAll();
 }
 
-// Diagnosis (to remove): at the frame's end, magenta where no depth was
-// written in it (the depth still the clear's, 1), and a small square of
-// the frame's color (by its number): whether the walls that sprites show
-// through (doors, ducts) were drawn.
-// which: 0 the magenta, 1 the square at the end, 2 a square right after
-// the frame's depth clear, at depth 0 (the walls cannot cover it).
-static void DebugMark(int which)
-{
-  const bool end = which != 0;
-  static const u8 colors[4][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255}};
-  static const matrix_t identity = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-  static const u8 magenta[3] = {255, 0, 255};
-  const u8 *c = end ? colors[frame_number % 4] : magenta;
-  // The target's x runs down the screen, its y across: top right corner;
-  // or all of it.
-  const float x0 = end ? 0.80f : -1, x1 = end ? 0.95f : 1;
-  const float y0 = which == 2 ? -0.97f : end ? -0.86f : -1, y1 = which == 2 ? -0.89f : end ? -0.78f : 1;
-  vertex_t *v;
-  int k;
-
-  FlushBatch();
-  v = ReserveVertices(4);
-
-  if (!v || !RoomForCommands())
-    return;
-
-  for (k = 0; k < 4; ++k)
-  {
-    v[k].x = (k & 1) ? x1 : x0;
-    v[k].y = (k & 2) ? y1 : y0;
-    v[k].z = 0;
-    v[k].s = v[k].t = 0;
-    v[k].r = c[0];
-    v[k].g = c[1];
-    v[k].b = c[2];
-    v[k].a = 255;
-  }
-
-  UploadMatrix(u_mvp, identity);
-  C3D_TexBind(0, NULL);
-  {
-    C3D_TexEnv env;
-
-    C3D_TexEnvInit(&env);
-    C3D_TexEnvSrc(&env, C3D_Both, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
-    C3D_TexEnvFunc(&env, C3D_Both, GPU_REPLACE);
-    C3D_SetTexEnv(0, &env);
-  }
-  C3D_FogGasMode(GPU_NO_FOG, GPU_PLAIN_DENSITY, false);
-  // The magenta: depth 1, where the depth is (still) 1 or more.
-  C3D_DepthTest(which != 1, GPU_LEQUAL,
-                which == 2 ? GPU_WRITE_COLOR | GPU_WRITE_DEPTH : GPU_WRITE_COLOR);
-  C3D_DepthMap(false, 0.0f, which == 2 ? 0.0f : 1.0f);
-  C3D_AlphaTest(false, GPU_ALWAYS, 0);
-  C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
-  C3D_StencilTest(false, GPU_ALWAYS, 0, 0xFF, 0);
-  C3D_SetViewport(0, 0, TOP_HEIGHT, TARGET_WIDTH);
-  C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
-
-  C3D_DrawArrays(GPU_TRIANGLE_STRIP, vertex_count, 4);
-  vertex_count += 4;
-  ++frame_draws;
-  DirtyAll();
-}
-
 static void ClearWithQuad(GLbitfield mask)
 {
   int write = 0;
@@ -2561,15 +2432,7 @@ void pglBlendScreen(float red, float green, float blue, float alpha)
 // erased the walls' (sprites showed through them, now and then).
 static void DoClear(GLbitfield mask)
 {
-  static u32 marked_frame;
-
   ClearWithQuad(mask);
-
-  if ((mask & GL_DEPTH_BUFFER_BIT) && marked_frame != frame_number)
-  {
-    marked_frame = frame_number;
-    DebugMark(2);
-  }
 }
 
 static void SaveClearStates(pending_clear_t *c)
@@ -4311,67 +4174,6 @@ static u32 ReadPixel(const u32 *color_buffer, int x, int y)
   const int ry = x * x_scale;
 
   return color_buffer[TexelOffset(rx, ry, TOP_HEIGHT)];
-}
-
-bool pglReadTarget(unsigned char *bgr, int *width, int *height)
-{
-  const u32 *color_buffer;
-  int x, y;
-
-  if (!initialized || in_frame || Closing())
-    return false;
-
-  // The last frame, once the GPU has drawn it (the target keeps it until
-  // the next frame draws over it).
-  StartFrame(false);
-  target->used = false;
-  C3D_FrameEnd(0);
-  StartFrame(false);
-  target->used = false;
-  C3D_FrameEnd(0);
-
-  color_buffer = (const u32 *) target->frameBuf.colorBuf;
-  *width = TARGET_WIDTH;
-  *height = TOP_HEIGHT;
-
-  for (y = 0; y < TOP_HEIGHT; ++y)
-    for (x = 0; x < TARGET_WIDTH; ++x)
-    {
-      const u32 pixel = color_buffer[TexelOffset(y, x, TOP_HEIGHT)];
-      unsigned char *out = bgr + (y * TARGET_WIDTH + x) * 3;
-
-      out[0] = pixel >> 8;
-      out[1] = pixel >> 16;
-      out[2] = pixel >> 24;
-    }
-
-  return true;
-}
-
-// Diagnosis (to remove): the depth buffer of the frame pglReadTarget just
-// read, 24 bits a pixel (high byte first), laid out as its image.
-bool pglReadDepth(unsigned char *rgb)
-{
-  const u32 *depth_buffer;
-  int x, y;
-
-  if (!initialized || in_frame || Closing() || !target->frameBuf.depthBuf)
-    return false;
-
-  depth_buffer = (const u32 *) target->frameBuf.depthBuf;
-
-  for (y = 0; y < TOP_HEIGHT; ++y)
-    for (x = 0; x < TARGET_WIDTH; ++x)
-    {
-      const u32 value = depth_buffer[TexelOffset(y, x, TOP_HEIGHT)];
-      unsigned char *out = rgb + (y * TARGET_WIDTH + x) * 3;
-
-      out[0] = value >> 16;
-      out[1] = value >> 8;
-      out[2] = value;
-    }
-
-  return true;
 }
 
 void glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format,

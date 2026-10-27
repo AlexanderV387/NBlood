@@ -7224,7 +7224,9 @@ MAIN_LOOP_RESTART:
 
                 if (isZ && !wasZ)
                 {
+                    // (Diagnosis) and the walls drawn the next way.
                     LOG_F(INFO, "3DS: ZL+ZR: the next 3 frames' draws");
+                    pglNextVariant();
                     pglLogFrames(3);
                 }
 

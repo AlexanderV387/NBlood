@@ -37,6 +37,8 @@ void *pglGetProcAddress(const char *name);
 
 // The next frames' draws, each with its states, in the log (printf).
 void pglLogFrames(int frames);
+// (Diagnosis) the next way of drawing the walls, of 8.
+void pglNextVariant(void);
 
 // The last frame as the GPU drew it: width x height (800 or 400 x 240)
 // pixels of blue, green, red, from the bottom row up (as a .bmp has them).

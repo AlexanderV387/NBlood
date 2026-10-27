@@ -650,12 +650,6 @@ static void BeginFrame(void)
   SetAttributes();
   DirtyAll();
 
-  // Diagnosis: the frame starts magenta, where nothing is drawn shows.
-  {
-    static const float magenta[4] = {1, 0, 1, 1};
-    ScreenQuad(magenta, 0, GPU_WRITE_COLOR, false, false, false);
-  }
-
   RunPendingClears();
 }
 
@@ -791,10 +785,13 @@ static GPU_TESTFUNC TestFunc(GLenum func)
   }
 }
 
-// The PICA200's depth runs the other way (near is 1, far is 0).
-static GPU_TESTFUNC DepthFunc(GLenum func)
+// The depth (0 near, 1 far; see ApplyFragment) is tested as in OpenGL,
+// but GL_ALWAYS with the depth written is GPU_LEQUAL: with GPU_ALWAYS the
+// PICA200 did not write the depth, it seems. Polymost draws its walls so
+// (front to back, each pixel once), and the sprites behind them showed.
+static GPU_TESTFUNC DepthFunc(GLenum func, bool write)
 {
-  return TestFunc(func);
+  return func == GL_ALWAYS && write ? GPU_LEQUAL : TestFunc(func);
 }
 
 static GPU_BLENDFACTOR BlendFactor(GLenum factor)
@@ -849,7 +846,7 @@ static void ComputeFragment(void)
   if (depth_test_on)
   {
     f->depth_on = true;
-    f->depth_func = DepthFunc(depth_func);
+    f->depth_func = DepthFunc(depth_func, depth_mask);
     if (depth_mask)
       f->write |= GPU_WRITE_DEPTH;
   }
@@ -2330,8 +2327,11 @@ static void ScreenQuad(const float *color, float z, int write, bool blend, bool 
     C3D_SetTexEnv(0, &env);
   }
   C3D_FogGasMode(GPU_NO_FOG, GPU_PLAIN_DENSITY, false);
-  C3D_DepthTest(true, GPU_ALWAYS, write);
-  C3D_DepthMap(true, -1.0f, 0.0f);
+  // The depth -z (the vertex shader makes w 1 here, z its own: see
+  // ApplyFragment), written with a test that passes: GPU_ALWAYS did not
+  // write it (see DepthFunc). Nothing is farther than 1.
+  C3D_DepthTest(true, (write & GPU_WRITE_DEPTH) && -z >= 1 ? GPU_GEQUAL : GPU_ALWAYS, write);
+  C3D_DepthMap(false, 0.0f, -z);
   C3D_AlphaTest(false, GPU_ALWAYS, 0);
   C3D_CullFace(GPU_CULL_NONE);
 

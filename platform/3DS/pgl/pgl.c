@@ -556,6 +556,7 @@ static int log_frames;
 static void LogDraw(const char *what, int first, int count);
 static void FlushBatch(void);
 static void RunPendingClears(void);
+static void ScreenQuad(const float *color, float z, int write, bool blend, bool stencil, bool scissor);
 static void MigrateToVRAM(void);
 
 static void ReportHang(void)
@@ -648,6 +649,12 @@ static void BeginFrame(void)
   C3D_BindProgram(&shader);
   SetAttributes();
   DirtyAll();
+
+  // Diagnosis: the frame starts magenta, where nothing is drawn shows.
+  {
+    static const float magenta[4] = {1, 0, 1, 1};
+    ScreenQuad(magenta, 0, GPU_WRITE_COLOR, false, false, false);
+  }
 
   RunPendingClears();
 }

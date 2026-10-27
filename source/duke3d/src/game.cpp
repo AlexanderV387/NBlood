@@ -7213,21 +7213,22 @@ MAIN_LOOP_RESTART:
             }
 
 #if defined __3DS__ && defined USE_OPENGL
-            // GPU mode, in a level: L and R together put the next 3
-            // frames' draws in the log (when something looks wrong).
+            // GPU mode, in a level: ZL and ZR together put the next 3
+            // frames' draws in the log (when something looks wrong; not L
+            // and R, which shoot by default).
             if (videoGetRenderMode() >= REND_POLYMOST && (myplayer.gm & MODE_GAME) && !(myplayer.gm & MODE_MENU))
             {
-                static bool wasLR;
-                unsigned const LR = (1u << N3DS_BUTTON_L) | (1u << N3DS_BUTTON_R);
-                bool const isLR = (n3ds_buttons_held() & LR) == LR;
+                static bool wasZ;
+                unsigned const Z = (1u << N3DS_BUTTON_ZL) | (1u << N3DS_BUTTON_ZR);
+                bool const isZ = (n3ds_buttons_held() & Z) == Z;
 
-                if (isLR && !wasLR)
+                if (isZ && !wasZ)
                 {
-                    LOG_F(INFO, "3DS: L+R: the next 3 frames' draws");
+                    LOG_F(INFO, "3DS: ZL+ZR: the next 3 frames' draws");
                     pglLogFrames(3);
                 }
 
-                wasLR = isLR;
+                wasZ = isZ;
             }
 #endif
             //g_switchRoutine(co_drawframe);

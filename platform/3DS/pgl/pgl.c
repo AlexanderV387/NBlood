@@ -557,6 +557,7 @@ static void LogDraw(const char *what, int first, int count);
 static void FlushBatch(void);
 static void RunPendingClears(void);
 static void DebugMark(bool end);
+static bool frame_wrote_depth; // (diagnosis) a draw wrote the depth
 static void ScreenQuad(const float *color, float z, int write, bool blend, bool stencil, bool scissor);
 static void MigrateToVRAM(void);
 
@@ -651,7 +652,6 @@ static void BeginFrame(void)
   SetAttributes();
   DirtyAll();
 
-  DebugMark(false);
   RunPendingClears();
 }
 
@@ -1302,6 +1302,9 @@ static void DrawVertices(GPU_Primitive_t primitive, int first, int count)
   start = svcGetSystemTick();
   changes = PrepareStates();
 
+  if (desired.fragment.depth_on && (desired.fragment.write & GPU_WRITE_DEPTH))
+    frame_wrote_depth = true;
+
   if (!changes && primitive == GPU_TRIANGLES && batch_count
       && batch_first + batch_count == first)
   {
@@ -1832,7 +1835,10 @@ void pglSwapBuffers(void)
   if (before_swap)
     before_swap();
 
+  if (frame_wrote_depth)
+    DebugMark(false);
   DebugMark(true);
+  frame_wrote_depth = false;
   FlushBatch();
   usage = C3D_GetCmdBufUsage();
 
@@ -2371,16 +2377,19 @@ static void ScreenQuad(const float *color, float z, int write, bool blend, bool 
   DirtyAll();
 }
 
-// Diagnosis (to remove): a small square of this frame's color (by its
-// number), at the start of the frame (first) and at its end (second): a
-// square of another frame's color, or none, is a part of the frame lost.
+// Diagnosis (to remove): at the frame's end, magenta where no depth was
+// written in it (the depth still the clear's, 1), and a small square of
+// the frame's color (by its number): whether the walls that sprites show
+// through (doors, ducts) were drawn.
 static void DebugMark(bool end)
 {
   static const u8 colors[4][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255}};
   static const matrix_t identity = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-  const u8 *c = colors[frame_number % 4];
-  // The target's x runs down the screen, its y across: top left corner.
-  const float x0 = 0.80f, x1 = 0.95f, y0 = end ? -0.86f : -0.97f, y1 = y0 + 0.08f;
+  static const u8 magenta[3] = {255, 0, 255};
+  const u8 *c = end ? colors[frame_number % 4] : magenta;
+  // The target's x runs down the screen, its y across: top right corner;
+  // or all of it.
+  const float x0 = end ? 0.80f : -1, x1 = end ? 0.95f : 1, y0 = end ? -0.86f : -1, y1 = end ? -0.78f : 1;
   vertex_t *v;
   int k;
 
@@ -2413,7 +2422,9 @@ static void DebugMark(bool end)
     C3D_SetTexEnv(0, &env);
   }
   C3D_FogGasMode(GPU_NO_FOG, GPU_PLAIN_DENSITY, false);
-  C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
+  // The magenta: depth 1, where the depth is (still) 1 or more.
+  C3D_DepthTest(!end, GPU_LEQUAL, GPU_WRITE_COLOR);
+  C3D_DepthMap(false, 0.0f, 1.0f);
   C3D_AlphaTest(false, GPU_ALWAYS, 0);
   C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
   C3D_StencilTest(false, GPU_ALWAYS, 0, 0xFF, 0);

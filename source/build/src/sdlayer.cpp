@@ -129,6 +129,21 @@ static void n3ds_gl_swap(void)
                     n3ds_fclose(f);
                 }
             }
+
+            // And its GPU commands (diagnosis).
+            unsigned const *words;
+            unsigned count;
+
+            if (pglLoggedCommands(&words, &count))
+            {
+                snprintf(name, sizeof(name), "cmd-%u.bin", (shots - 1) % 8);
+
+                if (FILE *f = n3ds_fopen_rewrite(name))
+                {
+                    fwrite(words, 4, count, f);
+                    n3ds_fclose(f);
+                }
+            }
         }
     }
 

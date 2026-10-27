@@ -558,6 +558,14 @@ static void FlushBatch(void);
 static void RunPendingClears(void);
 static void DebugMark(int which);
 static bool frame_wrote_depth; // (diagnosis) a draw wrote the depth
+static u32 *logged_commands, logged_command_words; // (diagnosis)
+
+bool pglLoggedCommands(const unsigned **words, unsigned *count)
+{
+  *words = (const unsigned *) logged_commands;
+  *count = logged_command_words;
+  return logged_commands != NULL;
+}
 static void ScreenQuad(const float *color, float z, int write, bool blend, bool stencil, bool scissor);
 static void MigrateToVRAM(void);
 
@@ -1839,6 +1847,20 @@ void pglSwapBuffers(void)
     DebugMark(0);
   DebugMark(1);
   frame_wrote_depth = false;
+  FlushBatch();
+
+  // Diagnosis: the first logged frame's GPU commands (pglLoggedCommands).
+  if (log_frames == 3)
+  {
+    u32 *buffer, used;
+
+    GPUCMD_GetBuffer(&buffer, NULL, &used);
+    free(logged_commands);
+    logged_commands = malloc(used * sizeof(u32));
+    logged_command_words = logged_commands ? used : 0;
+    if (logged_commands)
+      memcpy(logged_commands, buffer, used * sizeof(u32));
+  }
   FlushBatch();
   usage = C3D_GetCmdBufUsage();
 

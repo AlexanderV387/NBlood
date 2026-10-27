@@ -1609,6 +1609,7 @@ int32_t registerosdcommands(void)
         { "n3ds_map_zoom", "3DS: bottom screen map zoom (percent)", (void *)&n3ds_map_zoom, CVAR_INT, 25, 800 },
         { "n3ds_touch_turn", "3DS: sliding on the bottom screen turns" CVAR_BOOL_OPTSTR, (void *)&n3ds_touch_turn, CVAR_BOOL, 0, 1 },
         { "n3ds_touch_speed", "3DS: touch turning speed", (void *)&n3ds_touch_speed, CVAR_INT, 1, 10 },
+        { "n3ds_gpu_wide", "3DS: GPU mode: the top screen at 800x240 (not on the original 2DS)" CVAR_BOOL_OPTSTR, (void *)&n3ds_gpu_wide, CVAR_BOOL, 0, 1 },
         { "n3ds_run_mode", "3DS: run: 0 hold the button, 1 press once, 2 stick pushed, 3 always", (void *)&n3ds_run_mode, CVAR_INT, 0, N3DS_NUM_RUN_MODES - 1 },
         { "n3ds_screen_tilting", "3DS: the view tilts when dead and when looking to the sides" CVAR_BOOL_OPTSTR, (void *)&ud.screen_tilting, CVAR_BOOL, 0, 1 },
         { "n3ds_config_version", "3DS: settings version", (void *)&g_n3dsConfigVersion, CVAR_INT, 0, 100 },

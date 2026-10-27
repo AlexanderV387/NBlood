@@ -41,6 +41,7 @@ int32_t n3ds_map_zoom     = 100;
 int32_t n3ds_touch_turn   = 0;
 int32_t n3ds_touch_speed  = 4;
 int32_t n3ds_run_mode     = N3DS_RUN_HOLD;
+int32_t n3ds_gpu_wide     = 1;
 
 int (*n3ds_draw_bottom)(uint8_t *screen);
 int (*n3ds_in_game)(void);
@@ -1304,6 +1305,26 @@ void n3ds_present(const uint8_t *buffer, int width, int height, const uint8_t *p
 void n3ds_present_bottom(const uint8_t *palette, int work_us, int gpu_us)
 {
     Present(NULL, 0, 0, palette, work_us, gpu_us);
+}
+
+int n3ds_wide_supported(void)
+{
+    static int supported = -1;
+
+    if (supported < 0)
+    {
+        u8 model = CFG_MODEL_3DS;
+
+        if (R_SUCCEEDED(cfguInit()))
+        {
+            CFGU_GetSystemModel(&model);
+            cfguExit();
+        }
+
+        supported = model != CFG_MODEL_2DS;
+    }
+
+    return supported;
 }
 
 int n3ds_bottom_was_drawn(void)

@@ -27,6 +27,11 @@
 // screen, 400x240.
 bool pglCreateContext(void);
 void pglDeleteContext(void);
+
+// The top screen's wide mode (800x240, no 3D; not on the original 2DS):
+// twice the detail across, OpenGL's coordinates staying 400x240. Takes
+// effect at the next frame.
+void pglSetWide(bool wide);
 void pglSwapBuffers(void);
 void *pglGetProcAddress(const char *name);
 

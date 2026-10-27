@@ -43,6 +43,7 @@ extern "C" {
 static SDL_GLContext n3ds_gl_open(void)
 {
     n3ds_release_top();
+    pglSetWide(n3ds_gpu_wide && n3ds_wide_supported());
 
     if (!pglCreateContext())
         return nullptr;
@@ -58,6 +59,7 @@ static void n3ds_gl_swap(void)
     int work_us, gpu_us;
     bool const logged = pglLogFramesLeft() > 0;
 
+    pglSetWide(n3ds_gpu_wide && n3ds_wide_supported());  // (the option may change)
     pglSwapBuffers();
     pglFrameTimes(&work_us, &gpu_us);
     n3ds_present_bottom((const uint8_t *) curpalettefaded, work_us, gpu_us);

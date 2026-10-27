@@ -171,6 +171,10 @@ extern int32_t n3ds_map_zoom;       // bottom screen map zoom (percent)
 extern int32_t n3ds_touch_turn;     // sliding on the bottom screen turns
 extern int32_t n3ds_touch_speed;    // 1-10
 extern int32_t n3ds_run_mode;       // see N3DS_RUN_*
+extern int32_t n3ds_gpu_wide;       // GPU mode: the top screen at 800x240
+
+// The top screen's wide mode (800x240) exists: not on the original 2DS.
+int n3ds_wide_supported(void);
 
 enum
 {

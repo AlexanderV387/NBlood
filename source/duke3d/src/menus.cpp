@@ -819,6 +819,11 @@ static int32_t MEOSV_N3DS_RENDERER[] = { 8, 32 };
 static MenuOptionSet_t MEOS_N3DS_RENDERER = MAKE_MENUOPTIONSET( MEOSN_N3DS_RENDERER, MEOSV_N3DS_RENDERER, 0x3 );
 static MenuOption_t MEO_N3DS_RENDERER = MAKE_MENUOPTION( &MF_Redfont, &MEOS_N3DS_RENDERER, &ud.setup.bpp );
 static MenuEntry_t ME_N3DS_RENDERER = MAKE_MENUENTRY( "Renderer:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_RENDERER, Option );
+// The GPU's resolution: the top screen's wide mode, twice the detail across.
+static char const *MEOSN_N3DS_GPUWIDE[] = { "400x240", "800x240" };
+static MenuOptionSet_t MEOS_N3DS_GPUWIDE = MAKE_MENUOPTIONSET( MEOSN_N3DS_GPUWIDE, NULL, 0x2 );
+static MenuOption_t MEO_N3DS_GPUWIDE = MAKE_MENUOPTION( &MF_Redfont, &MEOS_N3DS_GPUWIDE, &n3ds_gpu_wide );
+static MenuEntry_t ME_N3DS_GPUWIDE = MAKE_MENUENTRY( "GPU resolution:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_GPUWIDE, Option );
 #endif
 static MenuOption_t MEO_N3DS_FPS = MAKE_MENUOPTION( &MF_Redfont, &MEOS_OffOn, &n3ds_show_fps );
 static MenuEntry_t ME_N3DS_FPS = MAKE_MENUENTRY( "FPS counter:", &MF_Redfont, &MEF_BigOptionsRt, &MEO_N3DS_FPS, Option );
@@ -826,6 +831,7 @@ static MenuEntry_t ME_N3DS_FPS = MAKE_MENUENTRY( "FPS counter:", &MF_Redfont, &M
 static MenuEntry_t *MEL_N3DS[] = {
 #ifdef USE_OPENGL
     &ME_N3DS_RENDERER,
+    &ME_N3DS_GPUWIDE,
 #endif
     &ME_N3DS_MAP,
     &ME_N3DS_STATUSBAR,
@@ -2735,6 +2741,12 @@ static void Menu_Pre(MenuID_t cm)
 
     switch (cm)
     {
+#if defined __3DS__ && defined USE_OPENGL
+    case MENU_N3DS:
+        // Only with the GPU, and where the wide mode exists.
+        MenuEntry_HideOnCondition(&ME_N3DS_GPUWIDE, bpp <= 8 || !n3ds_wide_supported());
+        break;
+#endif
     case MENU_MAIN_INGAME:
         MenuEntry_DisableOnCondition(&ME_MAIN_SAVEGAME, ud.recstat == 2);
         MenuEntry_DisableOnCondition(&ME_MAIN_QUITTOTITLE, g_netServer || numplayers > 1);

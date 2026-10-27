@@ -38,6 +38,13 @@
 #define TOP_WIDTH 400
 #define TOP_HEIGHT 240
 
+// The target's width: 800 in the top screen's wide mode (pglSetWide), with
+// OpenGL's coordinates still those of 400x240: twice the detail across,
+// for the same drawing.
+static int x_scale = 1, want_x_scale = 1;
+#define TARGET_WIDTH (TOP_WIDTH * x_scale)
+static bool MakeTarget(void);
+
 #define COMMAND_BUFFER_SIZE (BIG_LINEAR ? 2 * 1024 * 1024 : 1024 * 1024)
 // The vertex buffer and the command list: twice as big with a bigger
 // linear heap (see __system_allocateHeaps in n3ds.c): big maps need more.
@@ -566,6 +573,28 @@ static void BeginFrame(void)
   // a slow one starts at once: waiting for the next refresh would make it
   // 30 a second, without waiting it is shown at the refresh after it ends
   // (between 30 and 60).
+  // The width asked for (pglSetWide): a new target, once the GPU is done
+  // with the old one.
+  if (want_x_scale != x_scale && !Closing())
+  {
+    C3D_RenderTarget *old = target;
+
+    StartFrame(false);
+    C3D_FrameEnd(0);
+    C3D_RenderTargetDelete(old);
+    x_scale = want_x_scale;
+
+    if (!MakeTarget())
+    {
+      // No room for the wide one: back to the other.
+      x_scale = want_x_scale = x_scale == 2 ? 1 : 2;
+      MakeTarget();
+    }
+
+    printf("pgl: the top screen at %dx240\n", TARGET_WIDTH);
+    viewport_dirty = true;
+  }
+
   start = svcGetSystemTick();
   StartFrame(work_us < SYNC_WORK_US && !Closing());
   frame_vram_uploads = 0; // the GPU list starts empty
@@ -635,9 +664,9 @@ static void FinishDrawing(void)
 static void RotateRect(const int *rect, int *out)
 {
   out[0] = rect[1];
-  out[1] = TOP_WIDTH - (rect[0] + rect[2]);
+  out[1] = TARGET_WIDTH - (rect[0] + rect[2]) * x_scale;
   out[2] = rect[3];
-  out[3] = rect[2];
+  out[3] = rect[2] * x_scale;
 }
 
 static void ClipRect(int *rect, int width, int height)
@@ -665,7 +694,7 @@ static bool DrawableArea(void)
   if (scissor_on)
   {
     RotateRect(scissor_box, r);
-    ClipRect(r, TOP_HEIGHT, TOP_WIDTH);
+    ClipRect(r, TOP_HEIGHT, TARGET_WIDTH);
 
     if (r[2] <= 0 || r[3] <= 0)
       return false;
@@ -683,7 +712,7 @@ static void ComputeViewport(void)
   if (scissor_on)
   {
     RotateRect(scissor_box, desired.scissor);
-    ClipRect(desired.scissor, TOP_HEIGHT, TOP_WIDTH);
+    ClipRect(desired.scissor, TOP_HEIGHT, TARGET_WIDTH);
   }
 
   if (memcmp(desired.viewport, applied.viewport, sizeof(desired.viewport))
@@ -1551,6 +1580,28 @@ static void DrawMode(GLenum mode, int first, int count)
 // ==========================================================================
 // Context
 
+// The render target, x_scale times as wide as the top screen, and the
+// screen's mode to match (wide: 800x240, no 3D).
+static bool MakeTarget(void)
+{
+  gfxSetWide(x_scale == 2);
+  target = C3D_RenderTargetCreate(TOP_HEIGHT, TARGET_WIDTH, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+
+  if (!target)
+    return false;
+
+  C3D_RenderTargetSetOutput(target, GFX_TOP, GFX_LEFT,
+    GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0)
+    | GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8)
+    | GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
+  return true;
+}
+
+void pglSetWide(bool wide)
+{
+  want_x_scale = wide ? 2 : 1;
+}
+
 bool pglCreateContext(void)
 {
   int k;
@@ -1564,19 +1615,14 @@ bool pglCreateContext(void)
     return false;
   }
 
-  target = C3D_RenderTargetCreate(TOP_HEIGHT, TOP_WIDTH, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+  x_scale = want_x_scale;
 
-  if (!target)
+  if (!MakeTarget())
   {
     printf("pgl: no render target\n");
     C3D_Fini();
     return false;
   }
-
-  C3D_RenderTargetSetOutput(target, GFX_TOP, GFX_LEFT,
-    GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0)
-    | GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8)
-    | GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
 
   shader_dvlb = DVLB_ParseFile((u32 *) pgl_shader_shbin, pgl_shader_shbin_size);
   shaderProgramInit(&shader);
@@ -1643,6 +1689,7 @@ void pglDeleteContext(void)
 
   C3D_Fini(); // waits for the GPU
   FreePending();
+  gfxSetWide(false); // the screen as others draw on it
 
   for (k = 0; k < texture_count; ++k)
   {
@@ -2164,7 +2211,7 @@ static void ScreenQuad(const float *color, float z, int write, bool blend, bool 
   if (scissor)
   {
     RotateRect(scissor_box, r);
-    ClipRect(r, TOP_HEIGHT, TOP_WIDTH);
+    ClipRect(r, TOP_HEIGHT, TARGET_WIDTH);
 
     if (r[2] <= 0 || r[3] <= 0)
       return;
@@ -2214,11 +2261,11 @@ static void ScreenQuad(const float *color, float z, int write, bool blend, bool 
     C3D_StencilTest(false, GPU_ALWAYS, 0, 0xFF, 0);
   }
 
-  C3D_SetViewport(0, 0, TOP_HEIGHT, TOP_WIDTH);
+  C3D_SetViewport(0, 0, TOP_HEIGHT, TARGET_WIDTH);
   if (scissor)
   {
     RotateRect(scissor_box, r);
-    ClipRect(r, TOP_HEIGHT, TOP_WIDTH);
+    ClipRect(r, TOP_HEIGHT, TARGET_WIDTH);
     C3D_SetScissor(GPU_SCISSOR_NORMAL, r[0], r[1], r[0] + r[2], r[1] + r[3]);
   }
 
@@ -4061,7 +4108,7 @@ static u32 ReadPixel(const u32 *color_buffer, int x, int y)
   // In memory the target's rows run the other way from its window
   // coordinates (seen on the hardware: the screen wipe came out mirrored).
   const int rx = y;
-  const int ry = x;
+  const int ry = x * x_scale;
 
   return color_buffer[TexelOffset(rx, ry, TOP_HEIGHT)];
 }

@@ -251,6 +251,63 @@ static void RestoreBottomBacklight(void)
         SetBottomBacklight(true);
 }
 
+// The memory, split before main between the heap (the game's) and the
+// linear heap (the GPU's: textures, vertices, the screens). libctru gives
+// the linear heap 32 MB; the GPU renderer used 7 in a level (its textures
+// are let go when short), and the heap ran out first: with 96 MB or more
+// (the New 3DS), 20 MB for the linear heap. With less, half and half, at
+// most 32 MB linear.
+#define N3DS_LINEAR_SMALL (20u << 20)
+#define N3DS_LINEAR_DEFAULT (32u << 20)
+#define N3DS_SMALL_LINEAR_FROM (96u << 20)
+
+extern "C" char *fake_heap_start, *fake_heap_end;
+extern "C" u32 __ctru_heap, __ctru_heap_size, __ctru_linear_heap, __ctru_linear_heap_size;
+
+extern "C" void __system_allocateHeaps(void)
+{
+    Handle reslimit = 0;
+    ResourceLimitType type = RESLIMIT_COMMIT;
+    s64 max_commit = 0, current_commit = 0;
+
+    if (R_FAILED(svcGetResourceLimit(&reslimit, CUR_PROCESS_HANDLE)))
+        svcBreak(USERBREAK_PANIC);
+
+    svcGetResourceLimitLimitValues(&max_commit, reslimit, &type, 1);
+    svcGetResourceLimitCurrentValues(&current_commit, reslimit, &type, 1);
+    svcCloseHandle(reslimit);
+
+    u32 const remaining = (u32) (max_commit - current_commit) & ~0xFFF;
+    u32 const heap_max = OS_HEAP_AREA_END - OS_HEAP_AREA_BEGIN;
+
+    if (remaining >= N3DS_SMALL_LINEAR_FROM)
+        __ctru_linear_heap_size = N3DS_LINEAR_SMALL;
+    else
+        __ctru_linear_heap_size = min(remaining / 2, N3DS_LINEAR_DEFAULT) & ~0xFFF;
+
+    __ctru_heap_size = remaining - __ctru_linear_heap_size;
+
+    // The heap's addresses end at OS_HEAP_AREA_END: the rest goes linear.
+    if (__ctru_heap_size > heap_max)
+    {
+        __ctru_heap_size = heap_max;
+        __ctru_linear_heap_size = remaining - heap_max;
+    }
+
+    if (R_FAILED(svcControlMemory(&__ctru_heap, OS_HEAP_AREA_BEGIN, 0x0, __ctru_heap_size,
+                                  MEMOP_ALLOC, (MemPerm) (MEMPERM_READ | MEMPERM_WRITE))))
+        svcBreak(USERBREAK_PANIC);
+
+    if (R_FAILED(svcControlMemory(&__ctru_linear_heap, 0x0, 0x0, __ctru_linear_heap_size,
+                                  MEMOP_ALLOC_LINEAR, (MemPerm) (MEMPERM_READ | MEMPERM_WRITE))))
+        svcBreak(USERBREAK_PANIC);
+
+    mappableInit(OS_MAP_AREA_BEGIN, OS_MAP_AREA_END);
+
+    fake_heap_start = (char *) __ctru_heap;
+    fake_heap_end = fake_heap_start + __ctru_heap_size;
+}
+
 void n3ds_open(void)
 {
     // New 3DS: 804 MHz and the L2 cache.
@@ -955,8 +1012,6 @@ static void LogStall(int seconds)
           seconds, (unsigned) frames_presented, n3ds_where, (unsigned) (mixes - last_mixes), (unsigned) ndspChnListResyncs);
     last_mixes = mixes;
 }
-
-extern "C" u32 __ctru_heap, __ctru_heap_size, __ctru_linear_heap, __ctru_linear_heap_size;
 
 static void PresentThread(void *arg)
 {

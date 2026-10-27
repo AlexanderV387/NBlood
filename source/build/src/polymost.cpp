@@ -1577,7 +1577,10 @@ static void resizeglcheck(void)
     float m[4][4];
     Bmemset(m,0,sizeof(m));
     float const nearclip = 4.f / (gxyaspect * gyxscale * 512.f);
-    float const farclip = 8.f;
+    // The sky is drawn very far (see "sky depth"), past this: depth clamping
+    // keeps it; without (the 3DS), a farther far plane, or it is clipped
+    // and the last frame shows through.
+    float const farclip = glinfo.depthclamp ? 8.f : 1048576.f;
 
     m[0][0] = 1.f;
     m[1][1] = fxdimen / (fydimen * ratio);

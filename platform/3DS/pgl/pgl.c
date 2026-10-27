@@ -66,6 +66,10 @@ extern u32 __ctru_linear_heap_size;
 // does not wait for the screen's refresh to start the next.
 #define SYNC_WORK_US 16000
 
+// The distance (w, the eye's z) at depth 1, the farthest: beyond, the depth
+// stays 1. Polymost's sky is at 24.4; its walls mostly within 2.
+#define W_RANGE 32.f
+
 // VRAM kept free when placing textures (bytes).
 #define VRAM_RESERVE (256 * 1024)
 
@@ -756,14 +760,7 @@ static GPU_TESTFUNC TestFunc(GLenum func)
 // The PICA200's depth runs the other way (near is 1, far is 0).
 static GPU_TESTFUNC DepthFunc(GLenum func)
 {
-  switch (func)
-  {
-    case GL_LESS: return GPU_GREATER;
-    case GL_LEQUAL: return GPU_GEQUAL;
-    case GL_GREATER: return GPU_LESS;
-    case GL_GEQUAL: return GPU_LEQUAL;
-    default: return TestFunc(func);
-  }
+  return TestFunc(func);
 }
 
 static GPU_BLENDFACTOR BlendFactor(GLenum factor)
@@ -862,8 +859,10 @@ static void ComputeFragment(void)
     f->stencil_zpass = StencilOp(stencil_zpass);
   }
 
-  // glPolygonOffset: units of the 24-bit depth, toward the far side.
-  f->offset = polygon_offset_on ? -polygon_offset_units / 16777215.0f : 0.0f;
+  // glPolygonOffset is not done: the depth is the distance itself (see
+  // ApplyFragment), with nothing to add to it. (Polymost does not use it.)
+  (void) polygon_offset_on;
+  (void) polygon_offset_units;
 
   if (memcmp(f, &applied.fragment, sizeof(*f)))
     pending_changes |= CHANGE_FRAGMENT;
@@ -890,7 +889,11 @@ static void ApplyFragment(void)
   (void) front_face;
   C3D_CullFace(GPU_CULL_NONE);
 
-  C3D_DepthMap(true, -1.0f, f->offset);
+  // W-buffering: the depth is the distance (w) over W_RANGE, the same
+  // steps near and far. With the usual depth (z / w, steps far apart in
+  // the distance), things far away showed through the walls in front of
+  // them and their fog flickered. The vertex shader makes z / w -0.5.
+  C3D_DepthMap(false, 0.0f, 1.0f / W_RANGE);
 }
 
 // A texture unit's binding, or NULL.
@@ -1868,10 +1871,10 @@ pgl_fog_table_t *pglNewFogTable(const float brightness[129])
   float values[129];
   int k;
 
-  // The PICA200 looks fog up by its depth (1 near, 0 far): window depth
-  // 1 - k / 128.
+  // The PICA200 looks fog up by its depth (0 near, 1 far; see
+  // ApplyFragment): the distance k / 128 * W_RANGE.
   for (k = 0; k <= 128; ++k)
-    values[k] = brightness[128 - k];
+    values[k] = brightness[k];
 
   for (k = 0; k < 128; ++k)
   {
@@ -2329,8 +2332,8 @@ static void ClearWithQuad(GLbitfield mask)
   if ((mask & GL_DEPTH_BUFFER_BIT) && depth_mask)
     write |= GPU_WRITE_DEPTH;
 
-  // The PICA200's depth for the clear value: -(1 - depth).
-  ScreenQuad(clear_color, -(1 - clear_depth), write, false,
+  // The depth the PICA200 makes of z (see ScreenQuad): -z.
+  ScreenQuad(clear_color, -clear_depth, write, false,
              (mask & GL_STENCIL_BUFFER_BIT) != 0, scissor_on);
 }
 
@@ -2656,7 +2659,7 @@ void glEnd(void)
 // OpenGL: fog (glFog)
 //
 // The PICA200 fogs by a table of 128 steps over the depth. Each setting
-// (mode, start, end, density, projection) gets its table, made the first
+// (mode, start, end, density) gets its table, made the first
 // time and kept in a cache: Polymost sets the fog for each wall and sprite.
 
 #define FOG_CACHE_SIZE 512
@@ -2665,7 +2668,6 @@ typedef struct
 {
   GLenum mode;
   float start, end, density;
-  float projection[4];  // what turns the window depth back into the eye's
 } fog_key_t;
 
 typedef struct
@@ -2686,10 +2688,10 @@ static void FillFogTable(pgl_fog_table_t *table, const float brightness[129])
   float values[129];
   int k;
 
-  // The PICA200 looks fog up by its depth (1 near, 0 far): window depth
-  // 1 - k / 128.
+  // The PICA200 looks fog up by its depth (0 near, 1 far; see
+  // ApplyFragment): the distance k / 128 * W_RANGE.
   for (k = 0; k <= 128; ++k)
-    values[k] = brightness[128 - k];
+    values[k] = brightness[k];
 
   for (k = 0; k < 128; ++k)
   {
@@ -2726,17 +2728,9 @@ static void MakeFogTable(pgl_fog_table_t *table, const fog_key_t *key)
   float brightness[129];
   int k;
 
-  // The eye's distance at window depth w: z_ndc = 2w - 1 and, with the
-  // projection's z and w rows (eye x and y do not move them),
-  // z_ndc = (p10 z + p14) / (p11 z + p15).
+  // The depth is the distance (w, the eye's z) over W_RANGE.
   for (k = 0; k <= 128; ++k)
-  {
-    const float ndc = 2.f * k / 128 - 1;
-    const float below = ndc * key->projection[1] - key->projection[0];
-    const float z = below != 0 ? (key->projection[2] - ndc * key->projection[3]) / below : 1e9f;
-
-    brightness[k] = FogFactor(key, fabsf(z));
-  }
+    brightness[k] = FogFactor(key, k * W_RANGE / 128);
 
   FillFogTable(table, brightness);
   ++stat_fog_tables;
@@ -2758,7 +2752,6 @@ static pgl_fog_table_t *GLFogTable(void)
 {
   fog_key_t key;
   fog_cache_entry_t *entry;
-  const float *projection = matrices[1].stack[matrices[1].depth];
 
   if (gl_fog_table)
     return gl_fog_table;
@@ -2771,10 +2764,6 @@ static pgl_fog_table_t *GLFogTable(void)
   key.start = fog_mode == GL_LINEAR ? fog_start : 0;
   key.end = fog_mode == GL_LINEAR ? fog_end : 0;
   key.density = fog_mode == GL_LINEAR ? 0 : fog_density;
-  key.projection[0] = projection[10];
-  key.projection[1] = projection[11];
-  key.projection[2] = projection[14];
-  key.projection[3] = projection[15];
 
   entry = &fog_cache[HashFogKey(&key) % FOG_CACHE_SIZE];
 

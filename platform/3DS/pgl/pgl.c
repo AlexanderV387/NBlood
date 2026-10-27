@@ -556,7 +556,7 @@ static int log_frames;
 static void LogDraw(const char *what, int first, int count);
 static void FlushBatch(void);
 static void RunPendingClears(void);
-static void DebugMark(bool end);
+static void DebugMark(int which);
 static bool frame_wrote_depth; // (diagnosis) a draw wrote the depth
 static void ScreenQuad(const float *color, float z, int write, bool blend, bool stencil, bool scissor);
 static void MigrateToVRAM(void);
@@ -1836,8 +1836,8 @@ void pglSwapBuffers(void)
     before_swap();
 
   if (frame_wrote_depth)
-    DebugMark(false);
-  DebugMark(true);
+    DebugMark(0);
+  DebugMark(1);
   frame_wrote_depth = false;
   FlushBatch();
   usage = C3D_GetCmdBufUsage();
@@ -2381,15 +2381,19 @@ static void ScreenQuad(const float *color, float z, int write, bool blend, bool 
 // written in it (the depth still the clear's, 1), and a small square of
 // the frame's color (by its number): whether the walls that sprites show
 // through (doors, ducts) were drawn.
-static void DebugMark(bool end)
+// which: 0 the magenta, 1 the square at the end, 2 a square right after
+// the frame's depth clear, at depth 0 (the walls cannot cover it).
+static void DebugMark(int which)
 {
+  const bool end = which != 0;
   static const u8 colors[4][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255}};
   static const matrix_t identity = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
   static const u8 magenta[3] = {255, 0, 255};
   const u8 *c = end ? colors[frame_number % 4] : magenta;
   // The target's x runs down the screen, its y across: top right corner;
   // or all of it.
-  const float x0 = end ? 0.80f : -1, x1 = end ? 0.95f : 1, y0 = end ? -0.86f : -1, y1 = end ? -0.78f : 1;
+  const float x0 = end ? 0.80f : -1, x1 = end ? 0.95f : 1;
+  const float y0 = which == 2 ? -0.97f : end ? -0.86f : -1, y1 = which == 2 ? -0.89f : end ? -0.78f : 1;
   vertex_t *v;
   int k;
 
@@ -2423,8 +2427,9 @@ static void DebugMark(bool end)
   }
   C3D_FogGasMode(GPU_NO_FOG, GPU_PLAIN_DENSITY, false);
   // The magenta: depth 1, where the depth is (still) 1 or more.
-  C3D_DepthTest(!end, GPU_LEQUAL, GPU_WRITE_COLOR);
-  C3D_DepthMap(false, 0.0f, 1.0f);
+  C3D_DepthTest(which != 1, GPU_LEQUAL,
+                which == 2 ? GPU_WRITE_COLOR | GPU_WRITE_DEPTH : GPU_WRITE_COLOR);
+  C3D_DepthMap(false, 0.0f, which == 2 ? 0.0f : 1.0f);
   C3D_AlphaTest(false, GPU_ALWAYS, 0);
   C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
   C3D_StencilTest(false, GPU_ALWAYS, 0, 0xFF, 0);
@@ -2473,7 +2478,15 @@ void pglBlendScreen(float red, float green, float blue, float alpha)
 // erased the walls' (sprites showed through them, now and then).
 static void DoClear(GLbitfield mask)
 {
+  static u32 marked_frame;
+
   ClearWithQuad(mask);
+
+  if ((mask & GL_DEPTH_BUFFER_BIT) && marked_frame != frame_number)
+  {
+    marked_frame = frame_number;
+    DebugMark(2);
+  }
 }
 
 static void SaveClearStates(pending_clear_t *c)

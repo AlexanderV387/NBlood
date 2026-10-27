@@ -569,6 +569,7 @@ static void LogDraw(const char *what, int first, int count);
 static void FlushBatch(void);
 static void RunPendingClears(void);
 static void DebugMark(int which);
+static inline u32 TexelOffset(int x, int y, int width);
 static bool frame_wrote_depth; // (diagnosis) a draw wrote the depth
 
 // The PICA200 writes no depth for a draw with fog and blending that only
@@ -576,6 +577,26 @@ static bool frame_wrote_depth; // (diagnosis) a draw wrote the depth
 // them showed through (doors, ducts). With GPU_SRC_ALPHA it does: such
 // draws are made so, their alpha 1 (unless the alpha test needs it).
 static bool fog_copy;
+
+// Diagnosis (to remove): ways of drawing the walls (Polymost's draws with
+// GL_ALWAYS and the depth written), each for 120 frames in turn, and how
+// many frames of each the walls left without their depth (in the log).
+enum
+{
+  V_FLUSH_CLEAR = 1, // the GPU's framebuffer cache flushed after the depth clear
+  V_REPASS = 2,      // the walls again, with no texture, fog or color: the depth only
+  V_NOFOG = 4,       // no fog
+  V_NOFIX = 8,       // fog_copy not done (blending a copy, as before)
+  V_FLUSH_WALL = 16, // the cache flushed after each walls' draw
+  V_ALWAYS = 32,     // GPU_ALWAYS, not GPU_LEQUAL
+};
+static const unsigned variant_flags[8] = {
+  0, V_FLUSH_CLEAR, V_REPASS, V_NOFOG, V_NOFIX, V_FLUSH_WALL, V_ALWAYS, V_FLUSH_CLEAR | V_REPASS,
+};
+static int variant;
+static bool wall_state;   // the next draw is a wall
+static bool applied_wall; // so is the waiting batch
+static int variant_frames, variant_checked, variant_bad;
 static u32 *logged_commands, logged_command_words; // (diagnosis)
 
 bool pglLoggedCommands(const unsigned **words, unsigned *count)
@@ -875,6 +896,8 @@ static void ComputeFragment(void)
   {
     f->depth_on = true;
     f->depth_func = DepthFunc(depth_func, depth_mask);
+    if (wall_state && (variant_flags[variant] & V_ALWAYS))
+      f->depth_func = GPU_ALWAYS;
     if (depth_mask)
       f->write |= GPU_WRITE_DEPTH;
   }
@@ -1167,6 +1190,13 @@ static void ComputeProgram(void)
     desired.fog_color = 0;
   }
 
+  if (wall_state && (variant_flags[variant] & V_NOFOG))
+  {
+    desired.fog = false;
+    desired.fog_table = NULL;
+    desired.fog_color = 0;
+  }
+
   if (desired.fog != applied.fog || desired.fog_table != applied.fog_table
       || desired.fog_color != applied.fog_color)
     pending_changes |= CHANGE_PROGRAM;
@@ -1198,6 +1228,16 @@ static void ApplyProgram(void)
 // what citro3d does not have yet (CHANGE_*).
 static unsigned PrepareStates(void)
 {
+  {
+    const bool wall = !projected_draw && depth_test_on && depth_mask && depth_func == GL_ALWAYS;
+
+    if (wall != wall_state)
+    {
+      wall_state = wall;
+      program_dirty = fragment_dirty = true;
+    }
+  }
+
   ComputeMatrices();
 
   if (texture_dirty)
@@ -1215,7 +1255,8 @@ static unsigned PrepareStates(void)
   }
 
   {
-    const bool copy = desired.fog && !blend_on && depth_test_on && depth_mask;
+    const bool copy = desired.fog && !blend_on && depth_test_on && depth_mask
+                      && !(variant_flags[variant] & V_NOFIX);
 
     if (copy != fog_copy)
     {
@@ -1282,6 +1323,7 @@ static void CommitStates(void)
     ApplyViewport();
 
   applied = desired;
+  applied_wall = wall_state;
   pending_changes = 0;
 }
 
@@ -1328,9 +1370,36 @@ static void FlushBatch(void)
     return;
 
   C3D_DrawArrays(GPU_TRIANGLES, batch_first, batch_count);
-  batch_count = 0;
   ++frame_draws;
   ++stat_draws;
+
+  // (Diagnosis) the walls again, their depth only: as the debug squares,
+  // which write theirs.
+  if (applied_wall && (variant_flags[variant] & V_REPASS))
+  {
+    C3D_TexEnv env;
+
+    C3D_TexBind(0, NULL);
+    C3D_TexEnvInit(&env);
+    C3D_TexEnvSrc(&env, C3D_Both, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+    C3D_TexEnvFunc(&env, C3D_Both, GPU_REPLACE);
+    C3D_SetTexEnv(0, &env);
+    C3D_FogGasMode(GPU_NO_FOG, GPU_PLAIN_DENSITY, false);
+    C3D_AlphaTest(false, GPU_ALWAYS, 0);
+    C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
+    C3D_DepthTest(true, GPU_LEQUAL, GPU_WRITE_DEPTH);
+    C3D_DrawArrays(GPU_TRIANGLES, batch_first, batch_count);
+    ++frame_draws;
+    DirtyAll();
+  }
+
+  if (applied_wall && (variant_flags[variant] & V_FLUSH_WALL))
+  {
+    GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH, 1);
+    GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_INVALIDATE, 1);
+  }
+
+  batch_count = 0;
 }
 
 // Triangles join the waiting ones when the states are the same and they
@@ -1862,6 +1931,7 @@ void pglSwapBuffers(void)
   static int max_draws;
   static float max_usage;
   float usage;
+  bool wrote_depth;
 
   if (!initialized)
     return;
@@ -1883,6 +1953,13 @@ void pglSwapBuffers(void)
   if (frame_wrote_depth)
     DebugMark(0);
   DebugMark(1);
+  {
+    int k;
+
+    for (k = 0; k < variant; ++k)
+      DebugMark(3 + k);
+  }
+  wrote_depth = frame_wrote_depth;
   frame_wrote_depth = false;
   FlushBatch();
 
@@ -1915,6 +1992,34 @@ void pglSwapBuffers(void)
   }
 
   Present();
+
+  // (Diagnosis) every 4th frame that drew with the depth: whether its walls
+  // wrote theirs (most of the screen still at the clear's 1 if not).
+  if (wrote_depth && (frame_number & 3) == 0 && target->frameBuf.depthBuf)
+  {
+    const u32 *depth_buffer = (const u32 *) target->frameBuf.depthBuf;
+    int x, y, far = 0, total = 0;
+
+    GSPGPU_InvalidateDataCache(target->frameBuf.depthBuf, TOP_HEIGHT * TARGET_WIDTH * 4);
+
+    for (y = 4; y < TOP_HEIGHT; y += 8)
+      for (x = 4; x < TARGET_WIDTH; x += 8, ++total)
+        if ((depth_buffer[TexelOffset(y, x, TOP_HEIGHT)] & 0xFFFFFF) == 0xFFFFFF)
+          ++far;
+
+    ++variant_checked;
+    if (far * 2 > total)
+      ++variant_bad;
+  }
+
+  if (++variant_frames >= 120)
+  {
+    if (variant_checked)
+      printf("pgl: variant %d (flags %02x): walls without depth in %d of %d frames checked\n",
+             variant, variant_flags[variant], variant_bad, variant_checked);
+    variant = (variant + 1) % 8;
+    variant_frames = variant_checked = variant_bad = 0;
+  }
 
   if (log_frames)
   {
@@ -2441,18 +2546,21 @@ static void ScreenQuad(const float *color, float z, int write, bool blend, bool 
 // the frame's color (by its number): whether the walls that sprites show
 // through (doors, ducts) were drawn.
 // which: 0 the magenta, 1 the square at the end, 2 a square right after
-// the frame's depth clear, at depth 0 (the walls cannot cover it).
+// the frame's depth clear, at depth 0 (the walls cannot cover it); 3 and
+// up, white dots left of the end square, one for each variant's number.
 static void DebugMark(int which)
 {
   const bool end = which != 0;
+  const int dot = which - 3;
   static const u8 colors[4][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255}};
   static const matrix_t identity = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
   static const u8 magenta[3] = {255, 0, 255};
-  const u8 *c = end ? colors[frame_number % 4] : magenta;
+  const u8 *c = dot >= 0 ? colors[3] : end ? colors[frame_number % 4] : magenta;
   // The target's x runs down the screen, its y across: top right corner;
   // or all of it.
-  const float x0 = end ? 0.80f : -1, x1 = end ? 0.95f : 1;
-  const float y0 = which == 2 ? -0.97f : end ? -0.86f : -1, y1 = which == 2 ? -0.89f : end ? -0.78f : 1;
+  const float x0 = dot >= 0 ? 0.85f : end ? 0.80f : -1, x1 = dot >= 0 ? 0.92f : end ? 0.95f : 1;
+  const float y0 = dot >= 0 ? -0.74f + dot * 0.06f : which == 2 ? -0.97f : end ? -0.86f : -1;
+  const float y1 = dot >= 0 ? y0 + 0.04f : which == 2 ? -0.89f : end ? -0.78f : 1;
   vertex_t *v;
   int k;
 
@@ -2486,7 +2594,7 @@ static void DebugMark(int which)
   }
   C3D_FogGasMode(GPU_NO_FOG, GPU_PLAIN_DENSITY, false);
   // The magenta: depth 1, where the depth is (still) 1 or more.
-  C3D_DepthTest(which != 1, GPU_LEQUAL,
+  C3D_DepthTest(which == 0 || which == 2, GPU_LEQUAL,
                 which == 2 ? GPU_WRITE_COLOR | GPU_WRITE_DEPTH : GPU_WRITE_COLOR);
   C3D_DepthMap(false, 0.0f, which == 2 ? 0.0f : 1.0f);
   C3D_AlphaTest(false, GPU_ALWAYS, 0);
@@ -2540,6 +2648,12 @@ static void DoClear(GLbitfield mask)
   static u32 marked_frame;
 
   ClearWithQuad(mask);
+
+  if ((mask & GL_DEPTH_BUFFER_BIT) && (variant_flags[variant] & V_FLUSH_CLEAR))
+  {
+    GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH, 1);
+    GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_INVALIDATE, 1);
+  }
 
   if ((mask & GL_DEPTH_BUFFER_BIT) && marked_frame != frame_number)
   {

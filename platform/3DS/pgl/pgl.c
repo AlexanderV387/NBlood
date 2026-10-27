@@ -1695,9 +1695,9 @@ void pglSwapBuffers(void)
   {
     if (report_time)
       printf("pgl: up to %d draws, %d%% of the command list, %d vertices; "
-             "%u KiB of VRAM free; %d textures let go for room\n",
+             "%u KiB of VRAM and %u KiB of linear memory free; %d textures let go for room\n",
              max_draws, (int) (max_usage * 100), vertex_count,
-             (unsigned) (vramSpaceFree() / 1024), stat_evictions);
+             (unsigned) (vramSpaceFree() / 1024), (unsigned) (linearSpaceFree() / 1024), stat_evictions);
     stat_evictions = 0;
     report_time = osGetTime();
     max_draws = 0;
@@ -3830,6 +3830,9 @@ void glTexImage2D(GLenum target_, GLint level, GLint internal_format, GLsizei wi
   }
 
   t->has_data = true;
+  // Made now: not the first to let go for the next one (it would go
+  // before it is ever drawn).
+  t->frame = frame_number;
 
   ApplySampling(t);
 

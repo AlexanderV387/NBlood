@@ -556,6 +556,7 @@ static int log_frames;
 static void LogDraw(const char *what, int first, int count);
 static void FlushBatch(void);
 static void RunPendingClears(void);
+static void DebugMark(bool end);
 static void ScreenQuad(const float *color, float z, int write, bool blend, bool stencil, bool scissor);
 static void MigrateToVRAM(void);
 
@@ -650,6 +651,7 @@ static void BeginFrame(void)
   SetAttributes();
   DirtyAll();
 
+  DebugMark(false);
   RunPendingClears();
 }
 
@@ -1830,6 +1832,7 @@ void pglSwapBuffers(void)
   if (before_swap)
     before_swap();
 
+  DebugMark(true);
   FlushBatch();
   usage = C3D_GetCmdBufUsage();
 
@@ -2365,6 +2368,61 @@ static void ScreenQuad(const float *color, float z, int write, bool blend, bool 
   LogDraw(blend ? "screen tint" : "clear quad", -1, 4);
 
   // The OpenGL states again at the next draw.
+  DirtyAll();
+}
+
+// Diagnosis (to remove): a small square of this frame's color (by its
+// number), at the start of the frame (first) and at its end (second): a
+// square of another frame's color, or none, is a part of the frame lost.
+static void DebugMark(bool end)
+{
+  static const u8 colors[4][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255}};
+  static const matrix_t identity = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+  const u8 *c = colors[frame_number % 4];
+  // The target's x runs down the screen, its y across: top left corner.
+  const float x0 = 0.80f, x1 = 0.95f, y0 = end ? -0.86f : -0.97f, y1 = y0 + 0.08f;
+  vertex_t *v;
+  int k;
+
+  FlushBatch();
+  v = ReserveVertices(4);
+
+  if (!v || !RoomForCommands())
+    return;
+
+  for (k = 0; k < 4; ++k)
+  {
+    v[k].x = (k & 1) ? x1 : x0;
+    v[k].y = (k & 2) ? y1 : y0;
+    v[k].z = 0;
+    v[k].s = v[k].t = 0;
+    v[k].r = c[0];
+    v[k].g = c[1];
+    v[k].b = c[2];
+    v[k].a = 255;
+  }
+
+  UploadMatrix(u_mvp, identity);
+  C3D_TexBind(0, NULL);
+  {
+    C3D_TexEnv env;
+
+    C3D_TexEnvInit(&env);
+    C3D_TexEnvSrc(&env, C3D_Both, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+    C3D_TexEnvFunc(&env, C3D_Both, GPU_REPLACE);
+    C3D_SetTexEnv(0, &env);
+  }
+  C3D_FogGasMode(GPU_NO_FOG, GPU_PLAIN_DENSITY, false);
+  C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
+  C3D_AlphaTest(false, GPU_ALWAYS, 0);
+  C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
+  C3D_StencilTest(false, GPU_ALWAYS, 0, 0xFF, 0);
+  C3D_SetViewport(0, 0, TOP_HEIGHT, TARGET_WIDTH);
+  C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+
+  C3D_DrawArrays(GPU_TRIANGLE_STRIP, vertex_count, 4);
+  vertex_count += 4;
+  ++frame_draws;
   DirtyAll();
 }
 

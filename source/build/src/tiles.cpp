@@ -652,7 +652,13 @@ bool tileLoad(int16_t tileNum)
     if (!duke64 || !rt_tileload_callback || !rt_tileload_callback(tileNum))
         tileLoadData(tileNum, dasiz, (char *) waloff[tileNum]);
 
-#if defined USE_OPENGL && !defined POLYMOST_FIXED_FUNCTION  // (no indexed textures there: each tile's two took the 3DS's memory)
+#if defined USE_OPENGL && defined POLYMOST_FIXED_FUNCTION
+    // No indexed textures there (each tile's two took the 3DS's memory),
+    // but the textures made while the tile was not loaded (from nothing:
+    // garbage) are made again, as below.
+    if (videoGetRenderMode() >= REND_POLYMOST && in3dmode())
+        tileInvalidate(tileNum, -1, -1);
+#elif defined USE_OPENGL
     if (videoGetRenderMode() >= REND_POLYMOST &&
         in3dmode())
     {

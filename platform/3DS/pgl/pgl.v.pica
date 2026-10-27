@@ -11,10 +11,11 @@
 .fvec texmtx[4]    ; the texture matrix
 .fvec texgen_on    ; x: 1 to make the coordinates, 0 to take them
 
-.constf consts(1.0, 0.0, 0.00392156862745098, 0.0)
+.constf consts(1.0, 0.0, 0.00392156862745098, -0.99999)
 .alias ONE consts.xxxx
 .alias ZERO consts.yyyy
 .alias INV255 consts.zzzz
+.alias NEAR consts.wwww   ; the near plane's z, times w (just inside it)
 
 .out outpos position
 .out outtc0 texcoord0
@@ -29,10 +30,18 @@
 	mov r0.xyz, inpos
 	mov r0.w, ONE
 
-	dp4 outpos.x, mvp[0], r0
-	dp4 outpos.y, mvp[1], r0
-	dp4 outpos.z, mvp[2], r0
-	dp4 outpos.w, mvp[3], r0
+	dp4 r5.x, mvp[0], r0
+	dp4 r5.y, mvp[1], r0
+	dp4 r5.z, mvp[2], r0
+	dp4 r5.w, mvp[3], r0
+
+	; The depth clamped to the near and far planes (z from -w to 0), as
+	; OpenGL's GL_DEPTH_CLAMP: the PICA200 clips what is out, and walls the
+	; player stands against were cut open (what was behind showed).
+	mul r6, NEAR, r5.wwww
+	max r5.z, r5.zzzz, r6.zzzz
+	min r5.z, ZERO, r5.zzzz
+	mov outpos, r5
 
 	mul outclr, INV255, inclr
 

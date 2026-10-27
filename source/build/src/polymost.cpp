@@ -1576,11 +1576,11 @@ static void resizeglcheck(void)
 
     float m[4][4];
     Bmemset(m,0,sizeof(m));
-    // The sky is drawn very far (see "sky depth"), past the far plane, and
-    // walls the player stands against are nearer than the near plane:
-    // depth clamping keeps both; without (the 3DS), planes much farther and
-    // nearer, or they are clipped and what is behind shows through.
-    float const nearclip = 4.f / (gxyaspect * gyxscale * 512.f) * (glinfo.depthclamp ? 1.f : 1.f / 16.f);
+    float const nearclip = 4.f / (gxyaspect * gyxscale * 512.f);
+    // The sky is drawn very far (see "sky depth"), past this: depth clamping
+    // keeps it; without (the 3DS), a farther far plane, or it is clipped
+    // and the last frame shows through. (pgl clamps the depth of what is
+    // nearer than the near plane, walls the player stands against.)
     float const farclip = glinfo.depthclamp ? 8.f : 1048576.f;
 
     m[0][0] = 1.f;
@@ -2277,6 +2277,9 @@ void gloadtile_art(int32_t dapic, int32_t dapal, int32_t tintpalnum, int32_t das
             //This allows the Z-buffer to be updated for mirrors (which are invalidated textures)
             pic[0].r = pic[0].g = pic[0].b = 0; pic[0].a = 1;
             tsiz.x = tsiz.y = 1; hasalpha = 1;
+#ifdef __3DS__
+            siz = tsiz;  // the rest of pic is not set (garbage, from other textures)
+#endif
         }
         else
         {

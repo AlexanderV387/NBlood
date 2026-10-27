@@ -122,11 +122,9 @@ static bool in_frame;
 static u32 frame_number = 1;
 static u64 wait_ticks;      // waiting for the GPU and the screen, this frame
 static u64 last_swap;
-static u64 last_frame_end; // when the last frame went to the GPU
-// The screen's refresh (59.83 a second), and what the GPU's display copy
-// and the swap take after its drawing, at most.
+static u64 last_present;   // when the last frame went to the screen
+// The screen's refresh (59.83 a second).
 #define REFRESH_TICKS ((u64) (SYSCLOCK_ARM11 / 59.83))
-#define SWAP_MARGIN_US 2000
 static int work_us, gpu_us; // the last frame's
 static u64 stat_draw_ticks, stat_wait_ticks, stat_upload_ticks, stat_end_ticks;
 static int stat_draws, stat_binds, stat_fog, stat_texenv, stat_uploads;
@@ -1727,6 +1725,33 @@ void pglSetBeforeSwap(void (*callback)(void))
   before_swap = callback;
 }
 
+// The frame just sent, to the top screen: waits for the GPU to finish it,
+// copies it to the screen's back buffer, and swaps (at the next refresh).
+// The screen shows the other buffer until that refresh: one before a
+// copy, or the screen showed two frames at once.
+static void Present(void)
+{
+  const u64 start = svcGetSystemTick();
+  const u32 dim = GX_BUFFER_DIM(target->frameBuf.width, target->frameBuf.height);
+
+  if (Closing())
+    return;
+
+  if (last_present && svcGetSystemTick() - last_present < REFRESH_TICKS)
+    gspWaitForVBlank();
+
+  // Outside a frame, citro3d waits for the GPU's list to finish, copies,
+  // and waits for the copy.
+  C3D_SyncDisplayTransfer((u32 *) target->frameBuf.colorBuf, dim,
+                          (u32 *) gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL), dim,
+                          target->transferFlags);
+  gfxScreenSwapBuffers(GFX_TOP, false);
+  last_present = svcGetSystemTick();
+
+  wait_ticks += last_present - start;
+  stat_wait_ticks += last_present - start;
+}
+
 void pglSwapBuffers(void)
 {
   static u64 report_time;
@@ -1754,33 +1779,20 @@ void pglSwapBuffers(void)
   FlushBatch();
   usage = C3D_GetCmdBufUsage();
 
-  // The last frame went to the screen when the GPU finished it (citro3d
-  // swaps then), but the screen takes the swap only at its next refresh:
-  // until then it still shows the other buffer, the one this frame is
-  // about to be copied into. Copied sooner, the screen showed two frames
-  // at once (things flickering, seen through walls, more when moving): at
-  // least one refresh since that swap first.
-  if (last_frame_end)
-  {
-    const u64 swapped = last_frame_end + (u64) (gpu_us + SWAP_MARGIN_US) * CPU_TICKS_PER_USEC;
-
-    if (svcGetSystemTick() - swapped < REFRESH_TICKS)
-    {
-      const u64 start = svcGetSystemTick();
-
-      gspWaitForVBlank();
-      wait_ticks += svcGetSystemTick() - start;
-      stat_wait_ticks += svcGetSystemTick() - start;
-    }
-  }
+  // To the screen once the GPU has finished drawing it, not by citro3d
+  // (its copy came right after the frame's draws, in the GPU's list, and
+  // could start before they ended: what is drawn last, the weapon and the
+  // nearest sprites, flickered, half there, now and then).
+  target->used = false;
 
   {
     const u64 start = svcGetSystemTick();
 
     C3D_FrameEnd(0);
     stat_end_ticks += svcGetSystemTick() - start;
-    last_frame_end = svcGetSystemTick();
   }
+
+  Present();
 
   if (log_frames)
   {
